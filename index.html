@@ -497,8 +497,30 @@ input[type=range]::-webkit-slider-thumb {
 
 </div>
 
+<script src="model_data.js"></script>
 <script src="face-api.min.js"></script>
 <script>
+// Patch fetch so face-api can load models from embedded base64 data (works offline / file://)
+(function() {
+  const origFetch = window.fetch;
+  const b64ToArrayBuffer = s => {
+    const bin = atob(s), buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return buf.buffer;
+  };
+  const MAP = {
+    'tiny_face_detector_model-weights_manifest.json': () => ({ ok: true, json: () => Promise.resolve(JSON.parse(atob(MODEL_DATA.tfd_manifest))) }),
+    'tiny_face_detector_model-shard1':               () => ({ ok: true, arrayBuffer: () => Promise.resolve(b64ToArrayBuffer(MODEL_DATA.tfd_shard)) }),
+    'face_landmark_68_tiny_model-weights_manifest.json': () => ({ ok: true, json: () => Promise.resolve(JSON.parse(atob(MODEL_DATA.lm_manifest))) }),
+    'face_landmark_68_tiny_model-shard1':            () => ({ ok: true, arrayBuffer: () => Promise.resolve(b64ToArrayBuffer(MODEL_DATA.lm_shard)) }),
+  };
+  window.fetch = (url, opts) => {
+    const key = String(url).split('/').pop();
+    if (MAP[key]) return Promise.resolve(MAP[key]());
+    return origFetch(url, opts);
+  };
+})();
+
 // ── State ──
 let currentSticker = 'cat';
 let currentFilter = 'normal';
@@ -600,8 +622,8 @@ function resizeOverlay() {
 // ── Face Detection ──
 async function loadModels() {
   try {
-    await faceapi.nets.tinyFaceDetector.loadFromUri('./weights');
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('./weights');
+    await faceapi.nets.tinyFaceDetector.loadFromUri('/');
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/');
     modelLoaded = true;
     document.getElementById('faceStatus').textContent = '';
     setInterval(detectFaces, 80);
