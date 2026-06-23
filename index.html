@@ -2,533 +2,557 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>ふぃるたぁ！</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-  body {
-    background: #1a0a2e;
-    color: #fff;
-    font-family: 'Hiragino Maru Gothic Pro', 'M PLUS Rounded 1c', sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
+:root {
+  --pink: #ff6eb4;
+  --purple: #a855f7;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
 
-  header {
-    padding: 16px 24px;
-    text-align: center;
-    background: linear-gradient(135deg, #ff6eb4, #a855f7);
-    width: 100%;
-    box-shadow: 0 4px 20px rgba(168, 85, 247, 0.4);
-  }
+html, body {
+  width: 100%; height: 100%;
+  background: #000;
+  font-family: 'Hiragino Maru Gothic Pro', 'M PLUS Rounded 1c', sans-serif;
+  overflow: hidden;
+  color: #fff;
+  user-select: none;
+}
 
-  header h1 {
-    font-size: 28px;
-    letter-spacing: 4px;
-    text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
-  }
+/* ── Camera (fullscreen) ── */
+#cameraWrap {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
 
-  .main {
-    display: flex;
-    gap: 20px;
-    padding: 20px;
-    max-width: 1100px;
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
+#video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
 
-  /* Camera Area */
-  .camera-wrapper {
-    position: relative;
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 0 0 40px rgba(168, 85, 247, 0.5);
-    flex-shrink: 0;
-  }
+#overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  transform: scaleX(-1);
+}
 
-  #video {
-    display: block;
-    width: 480px;
-    height: 360px;
-    object-fit: cover;
-    transform: scaleX(-1);
-  }
+/* ── Top bar ── */
+#topBar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 10;
+  padding: calc(var(--safe-top) + 10px) 16px 10px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
-  #overlay {
-    position: absolute;
-    top: 0; left: 0;
-    width: 480px;
-    height: 360px;
-    pointer-events: none;
-    transform: scaleX(-1);
-  }
+.app-title {
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  background: linear-gradient(135deg, var(--pink), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
-  .camera-badge {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    background: rgba(255,0,0,0.8);
-    border-radius: 20px;
-    padding: 4px 10px;
-    font-size: 11px;
-    letter-spacing: 1px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
+.rec-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255,0,0,0.75);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  -webkit-text-fill-color: #fff;
+}
 
-  .camera-badge::before {
-    content: '';
-    width: 8px;
-    height: 8px;
-    background: #fff;
-    border-radius: 50%;
-    animation: blink 1s infinite;
-  }
+.rec-badge::before {
+  content: '';
+  width: 7px; height: 7px;
+  background: #fff;
+  border-radius: 50%;
+  animation: blink 1s infinite;
+}
 
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-  /* Controls */
-  .controls {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-width: 260px;
-    max-width: 300px;
-    flex: 1;
-  }
+#faceStatus {
+  position: fixed;
+  top: calc(var(--safe-top) + 56px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-size: 11px;
+  color: rgba(255,255,255,0.7);
+  background: rgba(0,0,0,0.45);
+  padding: 4px 12px;
+  border-radius: 20px;
+  pointer-events: none;
+  white-space: nowrap;
+}
 
-  .panel {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 16px;
-    backdrop-filter: blur(10px);
-  }
+/* ── Bottom Panel ── */
+#bottomPanel {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 10;
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 60%, transparent);
+  padding-bottom: calc(var(--safe-bottom) + 8px);
+}
 
-  .panel-title {
-    font-size: 12px;
-    letter-spacing: 2px;
-    color: #ff6eb4;
-    margin-bottom: 12px;
-    text-transform: uppercase;
-  }
+/* Tabs */
+#tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  padding: 6px 16px 0;
+}
 
-  /* Face Stickers */
-  .sticker-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
+.tab-btn {
+  flex: 1;
+  max-width: 120px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  font-size: 12px;
+  padding: 8px 4px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
 
-  .sticker-btn {
-    background: rgba(255, 255, 255, 0.08);
-    border: 2px solid transparent;
-    border-radius: 12px;
-    padding: 10px 6px;
-    cursor: pointer;
-    font-size: 11px;
-    color: #ddd;
-    text-align: center;
-    transition: all 0.2s;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
+.tab-btn.active {
+  color: var(--pink);
+  border-bottom-color: var(--pink);
+}
 
-  .sticker-btn .icon { font-size: 20px; }
+/* Tab Content */
+.tab-content { display: none; padding: 10px 0 6px; }
+.tab-content.active { display: block; }
 
-  .sticker-btn:hover {
-    border-color: #ff6eb4;
-    background: rgba(255, 110, 180, 0.15);
-    transform: scale(1.05);
-  }
+/* Sticker Row */
+#stickerRow {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#stickerRow::-webkit-scrollbar { display: none; }
 
-  .sticker-btn.active {
-    border-color: #ff6eb4;
-    background: rgba(255, 110, 180, 0.3);
-    box-shadow: 0 0 12px rgba(255, 110, 180, 0.4);
-  }
+.sticker-pill {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255,255,255,0.1);
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.18s;
+  min-width: 58px;
+}
 
-  /* Color Filters */
-  .filter-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-  }
+.sticker-pill .si { font-size: 22px; line-height: 1; }
+.sticker-pill .sl { font-size: 10px; color: #ccc; }
 
-  .filter-btn {
-    border: 2px solid transparent;
-    border-radius: 10px;
-    padding: 6px 4px;
-    cursor: pointer;
-    font-size: 10px;
-    color: #ddd;
-    text-align: center;
-    transition: all 0.2s;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
+.sticker-pill.active {
+  border-color: var(--pink);
+  background: rgba(255,110,180,0.25);
+}
 
-  .filter-preview {
-    width: 44px;
-    height: 32px;
-    border-radius: 6px;
-    margin-bottom: 2px;
-  }
+.sticker-pill:active { transform: scale(0.93); }
 
-  .filter-btn:hover { border-color: #a855f7; transform: scale(1.05); }
-  .filter-btn.active {
-    border-color: #a855f7;
-    box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
-  }
+/* Filter Row */
+#filterRow {
+  display: flex;
+  gap: 10px;
+  padding: 0 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#filterRow::-webkit-scrollbar { display: none; }
 
-  /* Sliders */
-  .slider-group { display: flex; flex-direction: column; gap: 10px; }
+.filter-item {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
 
-  .slider-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
+.filter-thumb {
+  width: 54px; height: 54px;
+  border-radius: 12px;
+  border: 2.5px solid transparent;
+  overflow: hidden;
+  transition: all 0.18s;
+  position: relative;
+}
 
-  .slider-label {
-    font-size: 11px;
-    color: #aaa;
-    width: 50px;
-    flex-shrink: 0;
-  }
+.filter-thumb .swatch {
+  width: 100%; height: 100%;
+}
 
-  input[type=range] {
-    flex: 1;
-    -webkit-appearance: none;
-    height: 4px;
-    background: rgba(255,255,255,0.15);
-    border-radius: 2px;
-    outline: none;
-    cursor: pointer;
-  }
+.filter-item.active .filter-thumb {
+  border-color: var(--purple);
+  box-shadow: 0 0 10px rgba(168,85,247,0.6);
+}
 
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    background: linear-gradient(135deg, #ff6eb4, #a855f7);
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(255, 110, 180, 0.5);
-  }
+.filter-item:active .filter-thumb { transform: scale(0.9); }
 
-  .slider-value {
-    font-size: 11px;
-    color: #ff6eb4;
-    width: 32px;
-    text-align: right;
-  }
+.filter-name {
+  font-size: 10px;
+  color: #bbb;
+  letter-spacing: 0.5px;
+}
 
-  /* Smoothing toggle */
-  .toggle-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 0;
-  }
+.filter-item.active .filter-name { color: var(--purple); }
 
-  .toggle-label { font-size: 12px; color: #ccc; }
+/* Adjust Panel */
+#adjPanel {
+  padding: 6px 16px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 
-  .toggle {
-    position: relative;
-    width: 40px;
-    height: 22px;
-  }
+.adj-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
-  .toggle input { opacity: 0; width: 0; height: 0; }
+.adj-label {
+  font-size: 11px;
+  color: #aaa;
+  width: 48px;
+  flex-shrink: 0;
+}
 
-  .toggle-slider {
-    position: absolute;
-    inset: 0;
-    background: rgba(255,255,255,0.15);
-    border-radius: 22px;
-    cursor: pointer;
-    transition: background 0.3s;
-  }
+input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 3px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
 
-  .toggle-slider::before {
-    content: '';
-    position: absolute;
-    width: 16px; height: 16px;
-    left: 3px; top: 3px;
-    background: #fff;
-    border-radius: 50%;
-    transition: transform 0.3s;
-  }
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px; height: 22px;
+  background: linear-gradient(135deg, var(--pink), var(--purple));
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(255,110,180,0.5);
+}
 
-  .toggle input:checked + .toggle-slider { background: linear-gradient(135deg, #ff6eb4, #a855f7); }
-  .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+.adj-val {
+  font-size: 11px;
+  color: var(--pink);
+  width: 28px;
+  text-align: right;
+}
 
-  /* Capture Button */
-  .capture-area {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    margin-top: auto;
-  }
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 
-  .btn-capture {
-    width: 100%;
-    padding: 14px;
-    background: linear-gradient(135deg, #ff6eb4, #a855f7);
-    border: none;
-    border-radius: 50px;
-    color: #fff;
-    font-size: 16px;
-    font-weight: bold;
-    letter-spacing: 2px;
-    cursor: pointer;
-    box-shadow: 0 4px 20px rgba(255, 110, 180, 0.5);
-    transition: all 0.2s;
-  }
+.toggle-label { font-size: 12px; color: #ccc; }
 
-  .btn-capture:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 30px rgba(255, 110, 180, 0.7);
-  }
+.toggle {
+  position: relative;
+  width: 44px; height: 24px;
+}
 
-  .btn-capture:active { transform: scale(0.97); }
+.toggle input { opacity: 0; width: 0; height: 0; }
 
-  /* Captured Photo */
-  #capturedImg {
-    display: none;
-    border-radius: 12px;
-    max-width: 200px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-    cursor: pointer;
-    transition: transform 0.2s;
-  }
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.15);
+  border-radius: 24px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
 
-  #capturedImg:hover { transform: scale(1.03); }
+.toggle-track::before {
+  content: '';
+  position: absolute;
+  width: 18px; height: 18px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
 
-  .capture-hint {
-    font-size: 10px;
-    color: #888;
-    text-align: center;
-  }
+.toggle input:checked + .toggle-track { background: linear-gradient(135deg, var(--pink), var(--purple)); }
+.toggle input:checked + .toggle-track::before { transform: translateX(20px); }
 
-  /* Flash effect */
-  .flash {
-    position: fixed;
-    inset: 0;
-    background: #fff;
-    pointer-events: none;
-    z-index: 999;
-    opacity: 0;
-    animation: flash 0.4s ease-out forwards;
-  }
+/* ── Capture Row ── */
+#captureRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px 6px;
+  gap: 0;
+  position: relative;
+}
 
-  @keyframes flash {
-    0% { opacity: 0.9 }
-    100% { opacity: 0 }
-  }
+#thumbWrap {
+  position: absolute;
+  left: 24px;
+}
 
-  /* Face not found */
-  .face-status {
-    position: absolute;
-    bottom: 12px;
-    left: 12px;
-    font-size: 11px;
-    color: rgba(255,255,255,0.5);
-    background: rgba(0,0,0,0.4);
-    padding: 4px 8px;
-    border-radius: 8px;
-  }
+#capturedImg {
+  display: none;
+  width: 52px; height: 52px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.4);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+#capturedImg:active { transform: scale(0.93); }
+
+.btn-capture {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid rgba(255,255,255,0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s;
+  box-shadow: 0 0 0 6px rgba(255,255,255,0.15);
+}
+
+.btn-capture:active { transform: scale(0.88); }
+
+.btn-capture-inner {
+  width: 58px; height: 58px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--pink), var(--purple));
+  box-shadow: 0 0 20px rgba(255,110,180,0.6);
+}
+
+/* Flash */
+.flash {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  pointer-events: none;
+  z-index: 999;
+  animation: flash 0.35s ease-out forwards;
+}
+
+@keyframes flash { 0%{opacity:0.95} 100%{opacity:0} }
+
+/* Save toast */
+#toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  background: rgba(0,0,0,0.8);
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 30px;
+  font-size: 14px;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.2s;
+  z-index: 999;
+  white-space: nowrap;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
 </style>
 </head>
 <body>
 
-<header>
-  <h1>ふぃるたぁ！🌸</h1>
-</header>
-
-<div class="main">
-
-  <!-- Camera -->
-  <div>
-    <div class="camera-wrapper">
-      <video id="video" autoplay muted playsinline></video>
-      <canvas id="overlay"></canvas>
-      <div class="camera-badge">REC</div>
-      <div class="face-status" id="faceStatus">顔を検索中…</div>
-    </div>
-    <div style="margin-top:12px; text-align:center;">
-      <img id="capturedImg" alt="撮影した写真">
-      <div class="capture-hint" id="captureHint" style="display:none">クリックで保存</div>
-    </div>
-  </div>
-
-  <!-- Controls -->
-  <div class="controls">
-
-    <!-- Face Stickers -->
-    <div class="panel">
-      <div class="panel-title">🐱 顔スタンプ</div>
-      <div class="sticker-grid">
-        <button class="sticker-btn" data-sticker="none" onclick="setSticker('none', this)">
-          <span class="icon">🚫</span>なし
-        </button>
-        <button class="sticker-btn active" data-sticker="cat" onclick="setSticker('cat', this)">
-          <span class="icon">🐱</span>猫耳
-        </button>
-        <button class="sticker-btn" data-sticker="ribbon" onclick="setSticker('ribbon', this)">
-          <span class="icon">🎀</span>リボン
-        </button>
-        <button class="sticker-btn" data-sticker="crown" onclick="setSticker('crown', this)">
-          <span class="icon">👑</span>王冠
-        </button>
-        <button class="sticker-btn" data-sticker="flowers" onclick="setSticker('flowers', this)">
-          <span class="icon">🌸</span>花冠
-        </button>
-        <button class="sticker-btn" data-sticker="glasses" onclick="setSticker('glasses', this)">
-          <span class="icon">🕶</span>サングラス
-        </button>
-        <button class="sticker-btn" data-sticker="sparkle" onclick="setSticker('sparkle', this)">
-          <span class="icon">✨</span>キラキラ
-        </button>
-        <button class="sticker-btn" data-sticker="catribbon" onclick="setSticker('catribbon', this)">
-          <span class="icon">🎀</span>猫+リボン
-        </button>
-        <button class="sticker-btn" data-sticker="hearts" onclick="setSticker('hearts', this)">
-          <span class="icon">💕</span>ハート
-        </button>
-      </div>
-    </div>
-
-    <!-- Color Filters -->
-    <div class="panel">
-      <div class="panel-title">🎨 カラーフィルター</div>
-      <div class="filter-grid" id="filterGrid">
-      </div>
-    </div>
-
-    <!-- Adjustments -->
-    <div class="panel">
-      <div class="panel-title">⚙️ 調整</div>
-      <div class="slider-group">
-        <div class="slider-row">
-          <div class="slider-label">明るさ</div>
-          <input type="range" min="50" max="150" value="100" oninput="updateAdj('brightness', this.value)">
-          <div class="slider-value" id="brightnessVal">100</div>
-        </div>
-        <div class="slider-row">
-          <div class="slider-label">コントラスト</div>
-          <input type="range" min="50" max="150" value="100" oninput="updateAdj('contrast', this.value)">
-          <div class="slider-value" id="contrastVal">100</div>
-        </div>
-        <div class="slider-row">
-          <div class="slider-label">彩度</div>
-          <input type="range" min="0" max="200" value="100" oninput="updateAdj('saturate', this.value)">
-          <div class="slider-value" id="saturateVal">100</div>
-        </div>
-        <div class="slider-row">
-          <div class="slider-label">ぼかし</div>
-          <input type="range" min="0" max="10" value="0" step="0.5" oninput="updateAdj('blur', this.value)">
-          <div class="slider-value" id="blurVal">0</div>
-        </div>
-      </div>
-      <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 12px 0;"></div>
-      <div class="toggle-row">
-        <div class="toggle-label">✨ 美肌モード</div>
-        <label class="toggle">
-          <input type="checkbox" id="smoothToggle" onchange="toggleSmooth(this.checked)">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <div class="toggle-row">
-        <div class="toggle-label">💡 ビネット</div>
-        <label class="toggle">
-          <input type="checkbox" id="vignetteToggle" onchange="toggleVignette(this.checked)">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-    </div>
-
-    <!-- Capture -->
-    <div class="panel capture-area">
-      <button class="btn-capture" onclick="capture()">📸 撮影する</button>
-    </div>
-
-  </div>
+<!-- Camera -->
+<div id="cameraWrap">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="overlay"></canvas>
 </div>
 
-<!-- face-api.js -->
-<script src="face-api.min.js"></script>
+<!-- Top -->
+<div id="topBar">
+  <div class="app-title">ふぃるたぁ！</div>
+  <div class="rec-badge">REC</div>
+</div>
+<div id="faceStatus">顔を検索中…</div>
 
+<!-- Toast -->
+<div id="toast">📥 保存しました</div>
+
+<!-- Bottom Panel -->
+<div id="bottomPanel">
+
+  <!-- Tabs -->
+  <div id="tabs">
+    <button class="tab-btn active" onclick="switchTab('sticker', this)">🐱 スタンプ</button>
+    <button class="tab-btn" onclick="switchTab('filter', this)">🎨 カラー</button>
+    <button class="tab-btn" onclick="switchTab('adjust', this)">⚙️ 調整</button>
+  </div>
+
+  <!-- Sticker Tab -->
+  <div class="tab-content active" id="tab-sticker">
+    <div id="stickerRow">
+      <div class="sticker-pill" onclick="setSticker('none',this)"><span class="si">🚫</span><span class="sl">なし</span></div>
+      <div class="sticker-pill active" onclick="setSticker('cat',this)"><span class="si">🐱</span><span class="sl">猫耳</span></div>
+      <div class="sticker-pill" onclick="setSticker('ribbon',this)"><span class="si">🎀</span><span class="sl">リボン</span></div>
+      <div class="sticker-pill" onclick="setSticker('catribbon',this)"><span class="si">🎀</span><span class="sl">猫+リボン</span></div>
+      <div class="sticker-pill" onclick="setSticker('crown',this)"><span class="si">👑</span><span class="sl">王冠</span></div>
+      <div class="sticker-pill" onclick="setSticker('flowers',this)"><span class="si">🌸</span><span class="sl">花冠</span></div>
+      <div class="sticker-pill" onclick="setSticker('glasses',this)"><span class="si">🕶</span><span class="sl">サングラス</span></div>
+      <div class="sticker-pill" onclick="setSticker('sparkle',this)"><span class="si">✨</span><span class="sl">キラキラ</span></div>
+      <div class="sticker-pill" onclick="setSticker('hearts',this)"><span class="si">💕</span><span class="sl">ハート</span></div>
+    </div>
+  </div>
+
+  <!-- Filter Tab -->
+  <div class="tab-content" id="tab-filter">
+    <div id="filterRow"></div>
+  </div>
+
+  <!-- Adjust Tab -->
+  <div class="tab-content" id="tab-adjust">
+    <div id="adjPanel">
+      <div class="adj-row">
+        <div class="adj-label">明るさ</div>
+        <input type="range" min="50" max="150" value="100" oninput="updateAdj('brightness',this.value)">
+        <div class="adj-val" id="brightnessVal">100</div>
+      </div>
+      <div class="adj-row">
+        <div class="adj-label">コントラスト</div>
+        <input type="range" min="50" max="150" value="100" oninput="updateAdj('contrast',this.value)">
+        <div class="adj-val" id="contrastVal">100</div>
+      </div>
+      <div class="adj-row">
+        <div class="adj-label">彩度</div>
+        <input type="range" min="0" max="200" value="100" oninput="updateAdj('saturate',this.value)">
+        <div class="adj-val" id="saturateVal">100</div>
+      </div>
+      <div class="adj-row">
+        <div class="adj-label">ぼかし</div>
+        <input type="range" min="0" max="10" value="0" step="0.5" oninput="updateAdj('blur',this.value)">
+        <div class="adj-val" id="blurVal">0</div>
+      </div>
+      <div style="display:flex; gap:16px; padding: 2px 0;">
+        <div class="toggle-row" style="flex:1">
+          <div class="toggle-label">✨ 美肌</div>
+          <label class="toggle">
+            <input type="checkbox" id="smoothToggle" onchange="toggleSmooth(this.checked)">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div class="toggle-row" style="flex:1">
+          <div class="toggle-label">💡 ビネット</div>
+          <label class="toggle">
+            <input type="checkbox" id="vignetteToggle" onchange="toggleVignette(this.checked)">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Capture Row -->
+  <div id="captureRow">
+    <div id="thumbWrap">
+      <img id="capturedImg" alt="撮影した写真">
+    </div>
+    <div class="btn-capture" onclick="capture()">
+      <div class="btn-capture-inner"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="face-api.min.js"></script>
 <script>
-// ===== State =====
+// ── State ──
 let currentSticker = 'cat';
 let currentFilter = 'normal';
 let adj = { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
-let smoothMode = false;
-let vignetteMode = false;
+let smoothMode = false, vignetteMode = false;
 let faceDetections = [];
 let modelLoaded = false;
-let animFrame = null;
 
 const video = document.getElementById('video');
 const overlay = document.getElementById('overlay');
 const ctx = overlay.getContext('2d');
+const TAU = Math.PI * 2;
 
-// ===== Color Filter Definitions =====
+// ── Filters ──
 const filters = [
-  { id: 'normal',  label: 'ノーマル', css: '' ,                                    bg: '#888' },
-  { id: 'vivid',   label: 'ビビッド', css: 'saturate(170%) contrast(110%)',        bg: 'linear-gradient(135deg,#f00,#0f0,#00f)' },
-  { id: 'pastel',  label: 'パステル', css: 'saturate(60%) brightness(115%)',        bg: 'linear-gradient(135deg,#ffd6e7,#c9d6ff)' },
-  { id: 'vintage', label: 'ビンテージ', css: 'sepia(40%) contrast(110%) brightness(95%)', bg: 'linear-gradient(135deg,#c9a96e,#7a5c2e)' },
-  { id: 'mono',    label: 'モノクロ',  css: 'grayscale(100%)',                     bg: 'linear-gradient(135deg,#555,#eee)' },
-  { id: 'sepia',   label: 'セピア',   css: 'sepia(80%)',                           bg: 'linear-gradient(135deg,#c8a86b,#8b6914)' },
-  { id: 'cool',    label: 'クール',   css: 'hue-rotate(190deg) saturate(120%)',    bg: 'linear-gradient(135deg,#3a7bd5,#00d2ff)' },
-  { id: 'warm',    label: 'ウォーム', css: 'hue-rotate(-20deg) saturate(130%) brightness(105%)', bg: 'linear-gradient(135deg,#f7971e,#ffd200)' },
-  { id: 'pink',    label: 'ピンク',   css: 'hue-rotate(300deg) saturate(130%)',    bg: 'linear-gradient(135deg,#f953c6,#b91d73)' },
-  { id: 'cyber',   label: 'サイバー', css: 'hue-rotate(120deg) saturate(200%) contrast(120%)', bg: 'linear-gradient(135deg,#00ff87,#60efff)' },
-  { id: 'dreamy',  label: 'ドリーミー', css: 'blur(0.3px) brightness(110%) saturate(80%)', bg: 'linear-gradient(135deg,#e0c3fc,#8ec5fc)' },
-  { id: 'dusk',    label: 'ダスク',   css: 'hue-rotate(240deg) saturate(90%) brightness(90%)', bg: 'linear-gradient(135deg,#4e54c8,#8f94fb)' },
+  { id:'normal',  label:'ノーマル',   css:'',                                              bg:'#888' },
+  { id:'vivid',   label:'ビビッド',   css:'saturate(170%) contrast(110%)',                 bg:'linear-gradient(135deg,#f00,#0f0,#00f)' },
+  { id:'pastel',  label:'パステル',   css:'saturate(60%) brightness(115%)',                bg:'linear-gradient(135deg,#ffd6e7,#c9d6ff)' },
+  { id:'vintage', label:'ビンテージ', css:'sepia(40%) contrast(110%) brightness(95%)',     bg:'linear-gradient(135deg,#c9a96e,#7a5c2e)' },
+  { id:'mono',    label:'モノクロ',   css:'grayscale(100%)',                               bg:'linear-gradient(135deg,#555,#eee)' },
+  { id:'sepia',   label:'セピア',     css:'sepia(80%)',                                    bg:'linear-gradient(135deg,#c8a86b,#8b6914)' },
+  { id:'cool',    label:'クール',     css:'hue-rotate(190deg) saturate(120%)',             bg:'linear-gradient(135deg,#3a7bd5,#00d2ff)' },
+  { id:'warm',    label:'ウォーム',   css:'hue-rotate(-20deg) saturate(130%) brightness(105%)', bg:'linear-gradient(135deg,#f7971e,#ffd200)' },
+  { id:'pink',    label:'ピンク',     css:'hue-rotate(300deg) saturate(130%)',             bg:'linear-gradient(135deg,#f953c6,#b91d73)' },
+  { id:'cyber',   label:'サイバー',   css:'hue-rotate(120deg) saturate(200%) contrast(120%)', bg:'linear-gradient(135deg,#00ff87,#60efff)' },
+  { id:'dreamy',  label:'ドリーミー', css:'blur(0.3px) brightness(110%) saturate(80%)',   bg:'linear-gradient(135deg,#e0c3fc,#8ec5fc)' },
+  { id:'dusk',    label:'ダスク',     css:'hue-rotate(240deg) saturate(90%) brightness(90%)', bg:'linear-gradient(135deg,#4e54c8,#8f94fb)' },
 ];
 
-function buildFilterGrid() {
-  const grid = document.getElementById('filterGrid');
+function buildFilterRow() {
+  const row = document.getElementById('filterRow');
   filters.forEach(f => {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn' + (f.id === 'normal' ? ' active' : '');
-    btn.dataset.filter = f.id;
-    btn.onclick = () => setFilter(f.id, btn);
-    const preview = document.createElement('div');
-    preview.className = 'filter-preview';
-    preview.style.background = f.bg;
-    btn.appendChild(preview);
-    btn.appendChild(document.createTextNode(f.label));
-    grid.appendChild(btn);
+    const item = document.createElement('div');
+    item.className = 'filter-item' + (f.id === 'normal' ? ' active' : '');
+    item.dataset.filter = f.id;
+    item.onclick = () => setFilter(f.id, item);
+    item.innerHTML = `
+      <div class="filter-thumb"><div class="swatch" style="background:${f.bg}"></div></div>
+      <div class="filter-name">${f.label}</div>`;
+    row.appendChild(item);
   });
 }
 
-// ===== Filter / Adj =====
-function setFilter(id, btn) {
+function setFilter(id, el) {
   currentFilter = id;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('.filter-item').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
   applyVideoFilter();
 }
 
-function setSticker(id, btn) {
+function setSticker(id, el) {
   currentSticker = id;
-  document.querySelectorAll('.sticker-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('.sticker-pill').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
 }
 
 function updateAdj(key, val) {
@@ -542,364 +566,243 @@ function toggleVignette(v) { vignetteMode = v; }
 
 function applyVideoFilter() {
   const f = filters.find(x => x.id === currentFilter);
-  const css = f ? f.css : '';
   const smooth = smoothMode ? 'blur(0.8px) ' : '';
-  video.style.filter = `${smooth}${css} brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturate}%) blur(${adj.blur}px)`;
+  video.style.filter = `${smooth}${f?.css||''} brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturate}%) blur(${adj.blur}px)`;
 }
 
-// ===== Camera =====
+function switchTab(name, el) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ── Camera ──
 async function startCamera() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
     video.srcObject = stream;
     await new Promise(r => video.onloadedmetadata = r);
-    overlay.width = video.videoWidth || 480;
-    overlay.height = video.videoHeight || 360;
-    overlay.style.width = '480px';
-    overlay.style.height = '360px';
-    video.style.width = '480px';
-    video.style.height = '360px';
-  } catch (e) {
+    resizeOverlay();
+    window.addEventListener('resize', resizeOverlay);
+  } catch(e) {
     alert('カメラを起動できませんでした。ブラウザの権限を確認してください。');
   }
 }
 
-// ===== Face Detection =====
-const MODEL_URL = './weights';
+function resizeOverlay() {
+  overlay.width = video.videoWidth || window.innerWidth;
+  overlay.height = video.videoHeight || window.innerHeight;
+}
 
+// ── Face Detection ──
 async function loadModels() {
   try {
-    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+    await faceapi.nets.tinyFaceDetector.loadFromUri('./weights');
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('./weights');
     modelLoaded = true;
     document.getElementById('faceStatus').textContent = '';
-    startDetection();
+    setInterval(detectFaces, 80);
   } catch(e) {
-    document.getElementById('faceStatus').textContent = '⚠ オフライン: スタンプ無効';
-    startDrawLoop();
+    document.getElementById('faceStatus').textContent = 'スタンプ読み込み失敗';
   }
+  requestAnimationFrame(drawLoop);
 }
 
 async function detectFaces() {
   if (!modelLoaded) return;
   try {
-    const detections = await faceapi
+    const det = await faceapi
       .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
       .withFaceLandmarks(true);
-    faceDetections = detections || [];
-    const status = document.getElementById('faceStatus');
-    status.textContent = faceDetections.length > 0 ? '' : '顔が見つかりません';
-  } catch(e) { faceDetections = []; }
+    faceDetections = det || [];
+    document.getElementById('faceStatus').textContent = faceDetections.length ? '' : '顔が見つかりません';
+  } catch { faceDetections = []; }
 }
 
-function startDetection() {
-  setInterval(detectFaces, 80);
-  startDrawLoop();
+function drawLoop() {
+  drawOverlay();
+  requestAnimationFrame(drawLoop);
 }
 
-function startDrawLoop() {
-  function loop() {
-    drawOverlay();
-    animFrame = requestAnimationFrame(loop);
-  }
-  loop();
-}
-
-// ===== Sticker Drawing =====
-const TAU = Math.PI * 2;
-
+// ── Drawing ──
 function drawOverlay() {
   const W = overlay.width, H = overlay.height;
   ctx.clearRect(0, 0, W, H);
-
   if (vignetteMode) drawVignette(W, H);
-
   if (currentSticker === 'sparkle') drawSparklesGlobal(W, H);
-
-  faceDetections.forEach(det => {
-    const box = det.detection.box;
-    const lm = det.landmarks;
-    drawSticker(box, lm, W);
-  });
+  faceDetections.forEach(det => drawSticker(det.detection.box, det.landmarks, W));
 }
 
 function drawVignette(W, H) {
-  const grad = ctx.createRadialGradient(W/2, H/2, H*0.3, W/2, H/2, H*0.8);
-  grad.addColorStop(0, 'rgba(0,0,0,0)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.55)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.8);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,0.55)');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 }
 
 function drawSticker(box, lm, W) {
-  const pts = lm ? lm.positions : null;
-  const x = box.x, y = box.y, w = box.width, h = box.height;
-  const cx = x + w / 2;
-  const scaleX = -1; // mirror
-
+  const {x,y,width:fw,height:fh} = box;
+  const cx = x + fw/2;
   ctx.save();
-  ctx.scale(-1, 1);
-  ctx.translate(-W, 0);
+  ctx.scale(-1,1); ctx.translate(-W,0);
   const mcx = W - cx;
-
-  switch (currentSticker) {
-    case 'cat': drawCatEars(mcx, y, w, h); break;
-    case 'ribbon': drawRibbon(mcx, y, w, h); break;
-    case 'crown': drawCrown(mcx, y, w, h); break;
-    case 'flowers': drawFlowerCrown(mcx, y, w, h); break;
-    case 'glasses': if(pts) drawGlasses(pts, W); break;
-    case 'sparkle': drawSparklesAround(mcx, y, w, h); break;
-    case 'catribbon': drawCatEars(mcx, y, w, h); drawRibbon(mcx, y, w, h); break;
-    case 'hearts': drawHearts(mcx, y, w, h); break;
+  const pts = lm?.positions;
+  switch(currentSticker) {
+    case 'cat':      drawCatEars(mcx,y,fw,fh); break;
+    case 'ribbon':   drawRibbon(mcx,y,fw,fh); break;
+    case 'catribbon':drawCatEars(mcx,y,fw,fh); drawRibbon(mcx,y,fw,fh); break;
+    case 'crown':    drawCrown(mcx,y,fw,fh); break;
+    case 'flowers':  drawFlowerCrown(mcx,y,fw,fh); break;
+    case 'glasses':  if(pts) drawGlasses(pts,W); break;
+    case 'sparkle':  drawSparklesAround(mcx,y,fw,fh); break;
+    case 'hearts':   drawHearts(mcx,y,fw,fh); break;
   }
-
   ctx.restore();
 }
 
-function drawCatEars(cx, fy, fw, fh) {
-  const earW = fw * 0.28;
-  const earH = fh * 0.38;
-  const earY = fy - earH * 0.7;
-  const gap = fw * 0.2;
-
-  [[cx - gap - earW/2, earY], [cx + gap + earW/2 - earW, earY]].forEach(([ex, ey]) => {
-    // outer ear (dark pink)
-    ctx.beginPath();
-    ctx.moveTo(ex, ey + earH);
-    ctx.lineTo(ex + earW / 2, ey);
-    ctx.lineTo(ex + earW, ey + earH);
-    ctx.closePath();
-    ctx.fillStyle = '#ff6eb4';
-    ctx.fill();
-    // inner ear (light pink)
-    const ip = 0.25;
-    ctx.beginPath();
-    ctx.moveTo(ex + earW*ip, ey + earH*(1-ip));
-    ctx.lineTo(ex + earW/2, ey + earH*ip*1.5);
-    ctx.lineTo(ex + earW*(1-ip), ey + earH*(1-ip));
-    ctx.closePath();
-    ctx.fillStyle = '#ffc2e0';
-    ctx.fill();
+function drawCatEars(cx,fy,fw,fh) {
+  const eW=fw*0.28, eH=fh*0.38, eY=fy-eH*0.7, gap=fw*0.2;
+  [[cx-gap-eW/2,eY],[cx+gap+eW/2-eW,eY]].forEach(([ex,ey])=>{
+    ctx.beginPath(); ctx.moveTo(ex,ey+eH); ctx.lineTo(ex+eW/2,ey); ctx.lineTo(ex+eW,ey+eH); ctx.closePath();
+    ctx.fillStyle='#ff6eb4'; ctx.fill();
+    const p=0.25;
+    ctx.beginPath(); ctx.moveTo(ex+eW*p,ey+eH*(1-p)); ctx.lineTo(ex+eW/2,ey+eH*p*1.5); ctx.lineTo(ex+eW*(1-p),ey+eH*(1-p)); ctx.closePath();
+    ctx.fillStyle='#ffc2e0'; ctx.fill();
   });
 }
 
-function drawRibbon(cx, fy, fw, fh) {
-  const rx = cx, ry = fy - fh * 0.08;
-  const rw = fw * 0.32, rh = fw * 0.18;
-  const col = '#ff6eb4', col2 = '#ff3d9a';
-
-  // Left knot
-  ctx.beginPath();
-  ctx.moveTo(rx, ry);
-  ctx.bezierCurveTo(rx - rw, ry - rh, rx - rw, ry + rh, rx, ry);
-  ctx.fillStyle = col;
-  ctx.fill();
-  ctx.strokeStyle = col2; ctx.lineWidth = 1.5; ctx.stroke();
-  // Right knot
-  ctx.beginPath();
-  ctx.moveTo(rx, ry);
-  ctx.bezierCurveTo(rx + rw, ry - rh, rx + rw, ry + rh, rx, ry);
-  ctx.fillStyle = col;
-  ctx.fill();
-  ctx.strokeStyle = col2; ctx.lineWidth = 1.5; ctx.stroke();
-  // Center
-  ctx.beginPath();
-  ctx.arc(rx, ry, fw * 0.05, 0, TAU);
-  ctx.fillStyle = col2;
-  ctx.fill();
+function drawRibbon(cx,fy,fw,fh) {
+  const rx=cx, ry=fy-fh*0.08, rw=fw*0.32, rh=fw*0.18;
+  [[-1],[1]].forEach(([d])=>{
+    ctx.beginPath(); ctx.moveTo(rx,ry);
+    ctx.bezierCurveTo(rx+d*rw,ry-rh,rx+d*rw,ry+rh,rx,ry);
+    ctx.fillStyle='#ff6eb4'; ctx.fill();
+    ctx.strokeStyle='#ff3d9a'; ctx.lineWidth=1.5; ctx.stroke();
+  });
+  ctx.beginPath(); ctx.arc(rx,ry,fw*0.05,0,TAU); ctx.fillStyle='#ff3d9a'; ctx.fill();
 }
 
-function drawCrown(cx, fy, fw, fh) {
-  const w = fw * 0.9, h = fh * 0.3;
-  const bx = cx - w/2, by = fy - h * 0.3;
-  const gold = '#FFD700', gold2 = '#FFA500';
-
-  ctx.fillStyle = gold;
-  ctx.strokeStyle = gold2;
-  ctx.lineWidth = 2;
-
-  // Crown base
+function drawCrown(cx,fy,fw,fh) {
+  const w=fw*0.9, h=fh*0.3, bx=cx-w/2, by=fy-h*0.3;
+  ctx.fillStyle='#FFD700'; ctx.strokeStyle='#FFA500'; ctx.lineWidth=2;
   ctx.beginPath();
-  ctx.moveTo(bx, by + h);
-  ctx.lineTo(bx, by + h * 0.4);
-  ctx.lineTo(bx + w*0.2, by + h * 0.7);
-  ctx.lineTo(bx + w*0.35, by);
-  ctx.lineTo(bx + w*0.5, by + h * 0.6);
-  ctx.lineTo(bx + w*0.65, by);
-  ctx.lineTo(bx + w*0.8, by + h * 0.7);
-  ctx.lineTo(bx + w, by + h * 0.4);
-  ctx.lineTo(bx + w, by + h);
-  ctx.closePath();
+  ctx.moveTo(bx,by+h); ctx.lineTo(bx,by+h*0.4); ctx.lineTo(bx+w*0.2,by+h*0.7);
+  ctx.lineTo(bx+w*0.35,by); ctx.lineTo(bx+w*0.5,by+h*0.6);
+  ctx.lineTo(bx+w*0.65,by); ctx.lineTo(bx+w*0.8,by+h*0.7);
+  ctx.lineTo(bx+w,by+h*0.4); ctx.lineTo(bx+w,by+h); ctx.closePath();
   ctx.fill(); ctx.stroke();
-
-  // Gems
-  [[bx+w*0.35, by+h*0.1, '#ff6eb4'], [bx+w*0.5, by+h*0.05, '#a855f7'], [bx+w*0.65, by+h*0.1, '#38bdf8']].forEach(([gx, gy, c]) => {
-    ctx.beginPath(); ctx.arc(gx, gy, w*0.04, 0, TAU);
-    ctx.fillStyle = c; ctx.fill();
+  [[bx+w*0.35,by+h*0.1,'#ff6eb4'],[bx+w*0.5,by+h*0.05,'#a855f7'],[bx+w*0.65,by+h*0.1,'#38bdf8']].forEach(([gx,gy,c])=>{
+    ctx.beginPath(); ctx.arc(gx,gy,w*0.04,0,TAU); ctx.fillStyle=c; ctx.fill();
   });
 }
 
-function drawFlowerCrown(cx, fy, fw, fh) {
-  const count = 7;
-  const radius = fw * 0.52;
-  const flowerR = fw * 0.09;
-  const colors = ['#ff6eb4','#ffd700','#ff8c00','#a855f7','#38bdf8','#ff6eb4','#ffd700'];
-
-  for (let i = 0; i < count; i++) {
-    const angle = Math.PI + (Math.PI / (count - 1)) * i;
-    const fx = cx + Math.cos(angle) * radius;
-    const fy2 = fy + fh * 0.05 + Math.sin(angle) * radius * 0.45;
-    drawFlower(fx, fy2, flowerR, colors[i % colors.length]);
+function drawFlowerCrown(cx,fy,fw,fh) {
+  const colors=['#ff6eb4','#ffd700','#ff8c00','#a855f7','#38bdf8','#ff6eb4','#ffd700'];
+  for(let i=0;i<7;i++){
+    const a=Math.PI+(Math.PI/6)*i;
+    const fx=cx+Math.cos(a)*fw*0.52, fy2=fy+fh*0.05+Math.sin(a)*fw*0.24;
+    drawFlower(fx,fy2,fw*0.09,colors[i]);
   }
 }
 
-function drawFlower(x, y, r, color) {
-  for (let i = 0; i < 6; i++) {
-    const a = (TAU / 6) * i;
-    ctx.beginPath();
-    ctx.ellipse(x + Math.cos(a)*r*0.7, y + Math.sin(a)*r*0.7, r*0.5, r*0.3, a, 0, TAU);
-    ctx.fillStyle = color;
-    ctx.fill();
+function drawFlower(x,y,r,col) {
+  for(let i=0;i<6;i++){
+    const a=(TAU/6)*i;
+    ctx.beginPath(); ctx.ellipse(x+Math.cos(a)*r*0.7,y+Math.sin(a)*r*0.7,r*0.5,r*0.3,a,0,TAU);
+    ctx.fillStyle=col; ctx.fill();
   }
-  ctx.beginPath(); ctx.arc(x, y, r*0.35, 0, TAU);
-  ctx.fillStyle = '#fff176'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,r*0.35,0,TAU); ctx.fillStyle='#fff176'; ctx.fill();
 }
 
-function drawGlasses(pts, W) {
-  // pts are in mirrored space already accounted for
-  // Left eye: pts 36-41, Right eye: pts 42-47 (in original, but we're in mirrored ctx)
-  const leftEye = pts.slice(36, 42);
-  const rightEye = pts.slice(42, 48);
-  const lc = center(leftEye), rc = center(rightEye);
-  const eyeW = dist(pts[36], pts[39]) * 1.4;
-  const eyeH = eyeW * 0.6;
-
-  // Mirror the x coords
-  const mlcx = W - lc.x, mrcx = W - rc.x;
-
-  ctx.strokeStyle = '#222'; ctx.lineWidth = 3;
-  ctx.fillStyle = 'rgba(0,200,255,0.25)';
-
-  // Left lens
-  ctx.beginPath(); ctx.ellipse(mlcx, lc.y, eyeW/2, eyeH/2, 0, 0, TAU);
-  ctx.fill(); ctx.stroke();
-  // Right lens
-  ctx.beginPath(); ctx.ellipse(mrcx, rc.y, eyeW/2, eyeH/2, 0, 0, TAU);
-  ctx.fill(); ctx.stroke();
-  // Bridge
-  ctx.beginPath(); ctx.moveTo(mlcx + eyeW/2, lc.y); ctx.lineTo(mrcx - eyeW/2, rc.y);
-  ctx.strokeStyle = '#222'; ctx.lineWidth = 2; ctx.stroke();
+function drawGlasses(pts,W) {
+  const le=pts.slice(36,42), re=pts.slice(42,48);
+  const lc=avg(le), rc=avg(re);
+  const eW=dist(pts[36],pts[39])*1.4, eH=eW*0.6;
+  const mlx=W-lc.x, mrx=W-rc.x;
+  ctx.strokeStyle='#222'; ctx.lineWidth=3; ctx.fillStyle='rgba(0,200,255,0.25)';
+  ctx.beginPath(); ctx.ellipse(mlx,lc.y,eW/2,eH/2,0,0,TAU); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(mrx,rc.y,eW/2,eH/2,0,0,TAU); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(mlx+eW/2,lc.y); ctx.lineTo(mrx-eW/2,rc.y);
+  ctx.lineWidth=2; ctx.stroke();
 }
 
-function center(pts) {
-  return { x: pts.reduce((s,p)=>s+p.x,0)/pts.length, y: pts.reduce((s,p)=>s+p.y,0)/pts.length };
-}
-function dist(a, b) { return Math.hypot(a.x-b.x, a.y-b.y); }
+function avg(pts){return{x:pts.reduce((s,p)=>s+p.x,0)/pts.length,y:pts.reduce((s,p)=>s+p.y,0)/pts.length};}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
 
-function drawHearts(cx, fy, fw, fh) {
-  const positions = [
-    [cx - fw*0.7, fy - fh*0.2], [cx + fw*0.7, fy - fh*0.2],
-    [cx - fw*0.5, fy + fh*0.6], [cx + fw*0.5, fy + fh*0.6],
-    [cx, fy - fh*0.3]
-  ];
-  const t = Date.now() / 600;
-  positions.forEach(([hx, hy], i) => {
-    const s = fw * 0.06 * (0.8 + 0.2 * Math.sin(t + i));
-    ctx.font = `${s*2}px serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(['💕','💗','💖','💓','💝'][i], hx, hy + Math.sin(t + i) * 5);
+function drawHearts(cx,fy,fw,fh) {
+  const t=Date.now()/600;
+  [[cx-fw*0.7,fy-fh*0.2],[cx+fw*0.7,fy-fh*0.2],[cx-fw*0.5,fy+fh*0.6],[cx+fw*0.5,fy+fh*0.6],[cx,fy-fh*0.3]]
+  .forEach(([hx,hy],i)=>{
+    ctx.font=`${fw*0.12}px serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(['💕','💗','💖','💓','💝'][i],hx,hy+Math.sin(t+i)*5);
   });
 }
 
-let sparkles = Array.from({length: 20}, () => ({
-  x: Math.random(), y: Math.random(), s: Math.random(), t: Math.random() * TAU
-}));
+const sparkles=Array.from({length:20},()=>({x:Math.random(),y:Math.random(),s:Math.random(),t:Math.random()*TAU}));
 
-function drawSparklesGlobal(W, H) {
-  const t = Date.now() / 800;
-  sparkles.forEach((sp, i) => {
-    const alpha = 0.4 + 0.6 * Math.abs(Math.sin(t + sp.t));
-    const size = (8 + sp.s * 10) * (0.7 + 0.3 * Math.sin(t*1.3 + i));
-    drawStar(sp.x * W, sp.y * H, size, `rgba(255,215,0,${alpha})`);
+function drawSparklesGlobal(W,H) {
+  const t=Date.now()/800;
+  sparkles.forEach((sp,i)=>{
+    const a=0.4+0.6*Math.abs(Math.sin(t+sp.t));
+    drawStar(sp.x*W,sp.y*H,(8+sp.s*10)*(0.7+0.3*Math.sin(t*1.3+i)),`rgba(255,215,0,${a})`);
   });
 }
 
-function drawSparklesAround(cx, fy, fw, fh) {
-  const t = Date.now() / 700;
-  for (let i = 0; i < 8; i++) {
-    const angle = (TAU / 8) * i + t * 0.5;
-    const r = fw * 0.7 + Math.sin(t + i) * fw * 0.1;
-    const sx = cx + Math.cos(angle) * r;
-    const sy = fy + fh/2 + Math.sin(angle) * r * 0.5;
-    const alpha = 0.5 + 0.5 * Math.sin(t * 2 + i);
-    drawStar(sx, sy, fw * 0.06, `rgba(255,215,0,${alpha})`);
+function drawSparklesAround(cx,fy,fw,fh) {
+  const t=Date.now()/700;
+  for(let i=0;i<8;i++){
+    const a=(TAU/8)*i+t*0.5, r=fw*0.7+Math.sin(t+i)*fw*0.1;
+    drawStar(cx+Math.cos(a)*r,fy+fh/2+Math.sin(a)*r*0.5,fw*0.06,`rgba(255,215,0,${0.5+0.5*Math.sin(t*2+i)})`);
   }
 }
 
-function drawStar(x, y, size, color) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  for (let i = 0; i < 4; i++) {
-    const a = (TAU / 4) * i;
-    ctx.lineTo(Math.cos(a) * size, Math.sin(a) * size);
-    ctx.lineTo(Math.cos(a + TAU/8) * size * 0.4, Math.sin(a + TAU/8) * size * 0.4);
-  }
-  ctx.closePath(); ctx.fill();
-  ctx.restore();
+function drawStar(x,y,s,col) {
+  ctx.save(); ctx.translate(x,y); ctx.fillStyle=col; ctx.beginPath();
+  for(let i=0;i<4;i++){const a=(TAU/4)*i;ctx.lineTo(Math.cos(a)*s,Math.sin(a)*s);ctx.lineTo(Math.cos(a+TAU/8)*s*0.4,Math.sin(a+TAU/8)*s*0.4);}
+  ctx.closePath(); ctx.fill(); ctx.restore();
 }
 
-// ===== Capture =====
+// ── Capture ──
 function capture() {
-  const W = overlay.width, H = overlay.height;
-  const cap = document.createElement('canvas');
-  cap.width = W; cap.height = H;
-  const c = cap.getContext('2d');
-
-  // Apply filter as CSS filter on offscreen canvas via drawImage
-  c.save();
-  c.scale(-1, 1);
-  c.translate(-W, 0);
-  const f = filters.find(x => x.id === currentFilter);
-  const smoothCss = smoothMode ? 'blur(0.8px) ' : '';
-  c.filter = `${smoothCss}${f?.css || ''} brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturate}%) blur(${adj.blur}px)`;
-  c.drawImage(video, 0, 0, W, H);
+  const W=overlay.width, H=overlay.height;
+  const cap=document.createElement('canvas'); cap.width=W; cap.height=H;
+  const c=cap.getContext('2d');
+  const f=filters.find(x=>x.id===currentFilter);
+  c.save(); c.scale(-1,1); c.translate(-W,0);
+  c.filter=`${smoothMode?'blur(0.8px) ':''}${f?.css||''} brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturate}%) blur(${adj.blur}px)`;
+  c.drawImage(video,0,0,W,H);
   c.restore();
-
-  // Draw overlay on top
-  c.drawImage(overlay, 0, 0);
-
-  if (vignetteMode) {
-    const grad = c.createRadialGradient(W/2, H/2, H*0.3, W/2, H/2, H*0.8);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.55)');
-    c.fillStyle = grad; c.fillRect(0, 0, W, H);
+  c.drawImage(overlay,0,0);
+  if(vignetteMode){
+    const g=c.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.8);
+    g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,0.55)');
+    c.fillStyle=g; c.fillRect(0,0,W,H);
   }
 
-  const img = document.getElementById('capturedImg');
-  img.src = cap.toDataURL('image/png');
-  img.style.display = 'block';
-  document.getElementById('captureHint').style.display = 'block';
-
-  img.onclick = () => {
-    const a = document.createElement('a');
-    a.href = img.src;
-    a.download = `filter_${Date.now()}.png`;
-    a.click();
+  const img=document.getElementById('capturedImg');
+  img.src=cap.toDataURL('image/png');
+  img.style.display='block';
+  img.onclick=()=>{
+    const a=document.createElement('a');
+    a.href=img.src; a.download=`filter_${Date.now()}.png`; a.click();
+    showToast('📥 保存しました');
   };
 
-  // Flash
-  const flash = document.createElement('div');
-  flash.className = 'flash';
-  document.body.appendChild(flash);
-  setTimeout(() => flash.remove(), 500);
+  const flash=document.createElement('div'); flash.className='flash';
+  document.body.appendChild(flash); setTimeout(()=>flash.remove(),400);
 }
 
-// ===== Init =====
-buildFilterGrid();
-startCamera().then(() => loadModels());
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),1800);
+}
+
+// ── Init ──
+buildFilterRow();
+startCamera().then(()=>loadModels());
 </script>
 </body>
 </html>
