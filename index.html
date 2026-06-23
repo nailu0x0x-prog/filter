@@ -638,7 +638,7 @@ const oefPitch = new OneEuroFilterAngle(1.0, 0.05);
 let faceResults = null;
 
 const faceMesh = new FaceMesh({
-  locateFile: file => `./mediapipe/${file}`
+  locateFile: file => `./mediapipe/${file.replace('simd_wasm_bin', 'wasm_bin')}`
 });
 
 faceMesh.setOptions({
