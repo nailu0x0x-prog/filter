@@ -43,7 +43,6 @@ html, body {
   inset: 0;
   width: 100%; height: 100%;
   pointer-events: none;
-  transform: scaleX(-1);
 }
 
 /* ── Top bar ── */
@@ -626,8 +625,21 @@ async function startCamera() {
 }
 
 function resizeOverlay() {
-  overlay.width = video.videoWidth || window.innerWidth;
-  overlay.height = video.videoHeight || window.innerHeight;
+  overlay.width  = window.innerWidth;
+  overlay.height = window.innerHeight;
+}
+
+// object-fit:cover でビデオがどう表示されるか計算し、
+// ビデオ座標 → 画面座標 の変換パラメータを返す
+function getTransform() {
+  const vW = video.videoWidth  || 640;
+  const vH = video.videoHeight || 480;
+  const dW = overlay.width;
+  const dH = overlay.height;
+  const scale = Math.max(dW / vW, dH / vH);
+  const ox = (dW - vW * scale) / 2;  // cover によるオフセット
+  const oy = (dH - vH * scale) / 2;
+  return { scale, ox, oy, dW, dH };
 }
 
 // ── Face Detection ──
@@ -665,8 +677,9 @@ function drawOverlay() {
   const W = overlay.width, H = overlay.height;
   ctx.clearRect(0, 0, W, H);
   if (vignetteMode) drawVignette(W, H);
+  const t = getTransform();
   if (currentSticker === 'sparkle') drawSparklesGlobal(W, H);
-  faceDetections.forEach(det => drawSticker(det.detection.box, det.landmarks, W));
+  faceDetections.forEach(det => drawSticker(det.detection.box, det.landmarks, t));
 }
 
 function drawVignette(W, H) {
@@ -675,24 +688,26 @@ function drawVignette(W, H) {
   ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 }
 
-function drawSticker(box, lm, W) {
-  const {x,y,width:fw,height:fh} = box;
-  const cx = x + fw/2;
-  ctx.save();
-  ctx.scale(-1,1); ctx.translate(-W,0);
-  const mcx = W - cx;
+function drawSticker(box, lm, t) {
+  // ビデオ座標 → 画面座標に変換
+  const sx  = box.x * t.scale + t.ox;
+  const sy  = box.y * t.scale + t.oy;
+  const fw  = box.width  * t.scale;
+  const fh  = box.height * t.scale;
+  // ビデオはCSS scaleX(-1)で映る → x座標を水平反転
+  const cx  = t.dW - (sx + fw / 2);
   const pts = lm?.positions;
+
   switch(currentSticker) {
-    case 'cat':      drawCatEars(mcx,y,fw,fh); break;
-    case 'ribbon':   drawRibbon(mcx,y,fw,fh); break;
-    case 'catribbon':drawCatEars(mcx,y,fw,fh); drawRibbon(mcx,y,fw,fh); break;
-    case 'crown':    drawCrown(mcx,y,fw,fh); break;
-    case 'flowers':  drawFlowerCrown(mcx,y,fw,fh); break;
-    case 'glasses':  if(pts) drawGlasses(pts,W); break;
-    case 'sparkle':  drawSparklesAround(mcx,y,fw,fh); break;
-    case 'hearts':   drawHearts(mcx,y,fw,fh); break;
+    case 'cat':      drawCatEars(cx, sy, fw, fh); break;
+    case 'ribbon':   drawRibbon(cx, sy, fw, fh); break;
+    case 'catribbon':drawCatEars(cx, sy, fw, fh); drawRibbon(cx, sy, fw, fh); break;
+    case 'crown':    drawCrown(cx, sy, fw, fh); break;
+    case 'flowers':  drawFlowerCrown(cx, sy, fw, fh); break;
+    case 'glasses':  if(pts) drawGlasses(pts, t); break;
+    case 'sparkle':  drawSparklesAround(cx, sy, fw, fh); break;
+    case 'hearts':   drawHearts(cx, sy, fw, fh); break;
   }
-  ctx.restore();
 }
 
 function drawCatEars(cx,fy,fw,fh) {
@@ -749,15 +764,17 @@ function drawFlower(x,y,r,col) {
   ctx.beginPath(); ctx.arc(x,y,r*0.35,0,TAU); ctx.fillStyle='#fff176'; ctx.fill();
 }
 
-function drawGlasses(pts,W) {
-  const le=pts.slice(36,42), re=pts.slice(42,48);
-  const lc=avg(le), rc=avg(re);
-  const eW=dist(pts[36],pts[39])*1.4, eH=eW*0.6;
-  const mlx=W-lc.x, mrx=W-rc.x;
+function drawGlasses(pts, t) {
+  // ビデオ座標 → 画面座標（ミラー込み）に変換
+  const mp = p => ({ x: t.dW - (p.x * t.scale + t.ox), y: p.y * t.scale + t.oy });
+  const mpts = pts.map(mp);
+  const le = mpts.slice(36,42), re = mpts.slice(42,48);
+  const lc = avg(le), rc = avg(re);
+  const eW = dist(mpts[36], mpts[39]) * 1.4, eH = eW * 0.6;
   ctx.strokeStyle='#222'; ctx.lineWidth=3; ctx.fillStyle='rgba(0,200,255,0.25)';
-  ctx.beginPath(); ctx.ellipse(mlx,lc.y,eW/2,eH/2,0,0,TAU); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(mrx,rc.y,eW/2,eH/2,0,0,TAU); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(mlx+eW/2,lc.y); ctx.lineTo(mrx-eW/2,rc.y);
+  ctx.beginPath(); ctx.ellipse(lc.x,lc.y,eW/2,eH/2,0,0,TAU); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(rc.x,rc.y,eW/2,eH/2,0,0,TAU); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(lc.x-eW/2,lc.y); ctx.lineTo(rc.x+eW/2,rc.y);
   ctx.lineWidth=2; ctx.stroke();
 }
 
