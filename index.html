@@ -408,6 +408,7 @@ input[type=range]::-webkit-slider-thumb {
   <div class="rec-badge">REC</div>
 </div>
 <div id="faceStatus">顔を検索中…</div>
+<div id="debugPanel" style="position:fixed;top:80px;left:8px;z-index:999;background:rgba(0,0,0,0.75);color:#0f0;font-size:11px;font-family:monospace;padding:8px 10px;border-radius:10px;line-height:1.7;pointer-events:none;"></div>
 
 <!-- Toast -->
 <div id="toast">📥 保存しました</div>
@@ -639,16 +640,27 @@ function getTransform() {
   return { scale, ox, oy, dW, dH };
 }
 
+// ── Debug ──
+const dbg = document.getElementById('debugPanel');
+function log(msg) { dbg.innerHTML += msg + '<br>'; }
+
 // ── Face Detection ──
 async function loadModels() {
+  log('MODEL_DATA: ' + (typeof MODEL_DATA !== 'undefined' ? '✓' : '✗ 未定義'));
+  log('STICKER_B64: ' + (typeof STICKER_B64 !== 'undefined' ? '✓' : '✗ 未定義'));
+  log('faceapi: ' + (typeof faceapi !== 'undefined' ? '✓' : '✗ 未定義'));
   try {
+    log('モデル読み込み中...');
     await faceapi.nets.tinyFaceDetector.loadFromUri('./weights');
+    log('TinyFaceDetector ✓');
     await faceapi.nets.faceLandmark68TinyNet.loadFromUri('./weights');
+    log('Landmark68Tiny ✓');
     modelLoaded = true;
     document.getElementById('faceStatus').textContent = '';
     setInterval(detectFaces, 80);
   } catch(e) {
-    document.getElementById('faceStatus').textContent = 'スタンプ読み込み失敗';
+    log('❌ ' + e.message);
+    document.getElementById('faceStatus').textContent = 'モデル読み込み失敗';
   }
   requestAnimationFrame(drawLoop);
 }
@@ -660,8 +672,8 @@ async function detectFaces() {
       .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
       .withFaceLandmarks(true);
     faceDetections = det || [];
-    document.getElementById('faceStatus').textContent = faceDetections.length ? '' : '顔が見つかりません';
-  } catch { faceDetections = []; }
+    document.getElementById('faceStatus').textContent = faceDetections.length ? `顔: ${faceDetections.length}件検出` : '顔が見つかりません';
+  } catch(e) { faceDetections = []; log('detect err: '+e.message); }
 }
 
 function drawLoop() {
