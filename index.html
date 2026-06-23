@@ -659,7 +659,11 @@ let sending = false;
 async function detectLoop() {
   if (!sending && video.readyState >= 2) {
     sending = true;
-    await faceMesh.send({ image: video });
+    try {
+      await faceMesh.send({ image: video });
+    } catch(e) {
+      document.getElementById('faceStatus').textContent = 'ERR: ' + e.message;
+    }
     sending = false;
   }
   requestAnimationFrame(detectLoop);
@@ -797,10 +801,19 @@ function showToast(msg) {
 
 // ── Init ──
 buildFilterRow();
-startCamera().then(() => {
+(async () => {
+  document.getElementById('faceStatus').textContent = 'MediaPipe初期化中...';
+  try {
+    await faceMesh.initialize();
+    document.getElementById('faceStatus').textContent = '';
+  } catch(e) {
+    document.getElementById('faceStatus').textContent = '初期化失敗: ' + e.message;
+    console.error('MediaPipe init error:', e);
+  }
+  await startCamera();
   detectLoop();
   requestAnimationFrame(drawLoop);
-});
+})();
 </script>
 </body>
 </html>
