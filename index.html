@@ -674,13 +674,75 @@ stickerImg.onload = () => {
 };
 stickerImg.src = 'data:image/png;base64,' + STICKER_B64;
 
+// ── Smooth State（EMA補間で毎フレーム滑らかに動かす）──
+const smooth = { x: null, y: null, w: null, angle: 0 };
+const ALPHA = 0.35; // 0=最大スムース 1=即時追従
+
+function lerpAngle(from, to, t) {
+  let d = to - from;
+  while (d >  Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return from + d * t;
+}
+
+function avg(pts) {
+  return {
+    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+  };
+}
+
+// 最新の検出結果からEMA平滑化済み状態を更新（毎フレーム呼ぶ）
+function updateSmooth(dets, t) {
+  if (!dets || dets.length === 0) return;
+
+  const det  = dets[0];
+  const pts  = det.landmarks?.positions;
+  if (!pts) return;
+
+  // ビデオ座標 → 画面座標（mirror込み）
+  const mp = p => ({
+    x: t.dW - (p.x * t.scale + t.ox),
+    y:         p.y * t.scale + t.oy,
+  });
+
+  const le = avg(pts.slice(36, 42).map(mp)); // 左目（画面では右側）
+  const re = avg(pts.slice(42, 48).map(mp)); // 右目（画面では左側）
+
+  // 両目の中点 = スタンプ中心
+  const tx = (le.x + re.x) / 2;
+  const ty = (le.y + re.y) / 2;
+
+  // 瞳孔間距離 × 係数でスタンプ幅を決定
+  const iod  = Math.hypot(re.x - le.x, re.y - le.y);
+  const tw   = iod * 3.5;
+
+  // ミラー画面での角度：左目が右、右目が左なので le→re の角度を使う
+  const tAngle = Math.atan2(le.y - re.y, le.x - re.x);
+
+  if (smooth.x === null) {
+    // 初回は即座にセット
+    smooth.x = tx; smooth.y = ty; smooth.w = tw; smooth.angle = tAngle;
+  } else {
+    smooth.x     += (tx - smooth.x)   * ALPHA;
+    smooth.y     += (ty - smooth.y)   * ALPHA;
+    smooth.w     += (tw - smooth.w)   * ALPHA;
+    smooth.angle  = lerpAngle(smooth.angle, tAngle, ALPHA);
+  }
+}
+
 // ── Drawing ──
 function drawOverlay() {
   const W = overlay.width, H = overlay.height;
   ctx.clearRect(0, 0, W, H);
   if (vignetteMode) drawVignette(W, H);
+
   const t = getTransform();
-  faceDetections.forEach(det => drawSticker(det.detection.box, t));
+  updateSmooth(faceDetections, t);
+
+  if (currentSticker === 'img' && smooth.x !== null) {
+    drawStickerImg();
+  }
 }
 
 function drawVignette(W, H) {
@@ -689,26 +751,17 @@ function drawVignette(W, H) {
   ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 }
 
-function drawSticker(box, t) {
-  if (currentSticker !== 'img') return;
+function drawStickerImg() {
   if (!stickerImg.complete || stickerImg.naturalWidth === 0) return;
 
-  // ビデオ座標 → 画面座標（object-fit:cover考慮）
-  const sx = box.x * t.scale + t.ox;
-  const sy = box.y * t.scale + t.oy;
-  const fw = box.width  * t.scale;
-  const fh = box.height * t.scale;
-  // CSSのscaleX(-1)ミラー → x軸反転
-  const cx = t.dW - (sx + fw / 2);
-
-  // 顔の幅に合わせてスタンプサイズを決定、顔中央に配置
-  const sw = fw * 1.2;
+  const sw = smooth.w;
   const sh = sw * (stickerImg.naturalHeight / stickerImg.naturalWidth);
 
   ctx.save();
-  // 白背景を透過させる（multiply blend）
+  ctx.translate(smooth.x, smooth.y);
+  ctx.rotate(smooth.angle);
   ctx.globalCompositeOperation = 'multiply';
-  ctx.drawImage(stickerImg, cx - sw/2, sy + fh*0.1, sw, sh);
+  ctx.drawImage(stickerImg, -sw / 2, -sh / 2, sw, sh);
   ctx.restore();
 }
 
