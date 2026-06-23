@@ -770,12 +770,11 @@ function drawStickerImg() {
   const le = ptAvg(pts.slice(36, 42).map(mp));
   const re = ptAvg(pts.slice(42, 48).map(mp));
 
-  // 鼻筋中心（安定したアンカー）
-  const noseBridge = ptAvg(pts.slice(27, 31).map(mp));
+  // 鼻先（ランドマーク30番）
+  const noseTip = mp(pts[30]);
 
-  // スタンプ中心 = 目の中点と鼻筋を加重平均（目だけより安定）
-  const rawX = le.x * 0.4 + re.x * 0.4 + noseBridge.x * 0.2;
-  const rawY = le.y * 0.4 + re.y * 0.4 + noseBridge.y * 0.2;
+  const rawX = noseTip.x;
+  const rawY = noseTip.y;
 
   // 瞳孔間距離 → スタンプ幅
   const iod   = Math.hypot(re.x - le.x, re.y - le.y);
