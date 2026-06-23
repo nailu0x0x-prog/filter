@@ -495,29 +495,6 @@ input[type=range]::-webkit-slider-thumb {
 
 <script src="model_data.js"></script>
 <script src="sticker_data.js"></script>
-<script>
-// face-api.min.js のロード前に window.fetch をパッチする
-// → tfjs がロード時にキャプチャする fetch が差し替え済みになる
-(function() {
-  const _origFetch = window.fetch.bind(window);
-  const b64ToAB = s => {
-    const bin = atob(s), buf = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-    return buf.buffer;
-  };
-  const MAP = {
-    'tiny_face_detector_model-weights_manifest.json':    () => ({ ok:true, json: () => Promise.resolve(JSON.parse(atob(MODEL_DATA.tfd_manifest))), arrayBuffer: () => Promise.resolve(b64ToAB(MODEL_DATA.tfd_manifest)) }),
-    'tiny_face_detector_model-shard1':                   () => ({ ok:true, json: () => Promise.resolve(null), arrayBuffer: () => Promise.resolve(b64ToAB(MODEL_DATA.tfd_shard)) }),
-    'face_landmark_68_tiny_model-weights_manifest.json': () => ({ ok:true, json: () => Promise.resolve(JSON.parse(atob(MODEL_DATA.lm_manifest))), arrayBuffer: () => Promise.resolve(b64ToAB(MODEL_DATA.lm_manifest)) }),
-    'face_landmark_68_tiny_model-shard1':                () => ({ ok:true, json: () => Promise.resolve(null), arrayBuffer: () => Promise.resolve(b64ToAB(MODEL_DATA.lm_shard)) }),
-  };
-  window.fetch = (url, opts) => {
-    const key = String(url).split('/').pop().split('?')[0];
-    if (MAP[key]) return Promise.resolve(MAP[key]());
-    return _origFetch(url, opts);
-  };
-})();
-</script>
 <script src="face-api.min.js"></script>
 <script>
 
@@ -637,16 +614,33 @@ const dbg = document.getElementById('debugPanel');
 function log(msg) { dbg.innerHTML += msg + '<br>'; }
 
 // ── Face Detection ──
+// fetchを一切使わず tf.io.decodeWeights で直接メモリからロード
 async function loadModels() {
-  log('MODEL_DATA: ' + (typeof MODEL_DATA !== 'undefined' ? '✓' : '✗ 未定義'));
-  log('STICKER_B64: ' + (typeof STICKER_B64 !== 'undefined' ? '✓' : '✗ 未定義'));
-  log('faceapi: ' + (typeof faceapi !== 'undefined' ? '✓' : '✗ 未定義'));
+  log('MODEL_DATA: ' + (typeof MODEL_DATA !== 'undefined' ? '✓' : '✗'));
+  log('STICKER_B64: ' + (typeof STICKER_B64 !== 'undefined' ? '✓' : '✗'));
+  log('faceapi: ' + (typeof faceapi !== 'undefined' ? '✓' : '✗'));
   try {
-    log('モデル読み込み中...');
-    await faceapi.nets.tinyFaceDetector.loadFromUri('./weights');
+    const tfLib = window.tf || faceapi.tf;
+    log('tf: ' + (tfLib ? '✓' : '✗ 見つからない'));
+
+    const b64ToAB = s => {
+      const bin = atob(s), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      return buf.buffer;
+    };
+
+    log('TinyFaceDetector 読み込み中...');
+    const tfdSpecs  = JSON.parse(atob(MODEL_DATA.tfd_manifest))[0].weights;
+    const tfdMap    = tfLib.io.decodeWeights(b64ToAB(MODEL_DATA.tfd_shard), tfdSpecs);
+    await faceapi.nets.tinyFaceDetector.loadFromWeightMap(tfdMap);
     log('TinyFaceDetector ✓');
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('./weights');
-    log('Landmark68Tiny ✓');
+
+    log('Landmark68 読み込み中...');
+    const lmSpecs   = JSON.parse(atob(MODEL_DATA.lm_manifest))[0].weights;
+    const lmMap     = tfLib.io.decodeWeights(b64ToAB(MODEL_DATA.lm_shard), lmSpecs);
+    await faceapi.nets.faceLandmark68TinyNet.loadFromWeightMap(lmMap);
+    log('Landmark68 ✓');
+
     modelLoaded = true;
     document.getElementById('faceStatus').textContent = '';
     setInterval(detectFaces, 80);
