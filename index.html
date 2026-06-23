@@ -408,8 +408,6 @@ input[type=range]::-webkit-slider-thumb {
   <div class="rec-badge">REC</div>
 </div>
 <div id="faceStatus">顔を検索中…</div>
-<div id="debugPanel" style="position:fixed;top:80px;left:8px;z-index:999;background:rgba(0,0,0,0.75);color:#0f0;font-size:11px;font-family:monospace;padding:8px 10px;border-radius:10px;line-height:1.7;pointer-events:none;"></div>
-
 <!-- Toast -->
 <div id="toast">📥 保存しました</div>
 
@@ -493,9 +491,8 @@ input[type=range]::-webkit-slider-thumb {
 
 </div>
 
-<script src="model_data.js"></script>
 <script src="sticker_data.js"></script>
-<script src="face-api.min.js"></script>
+<script src="./mediapipe/face_mesh.js"></script>
 <script>
 
 // ── State ──
@@ -503,13 +500,10 @@ let currentSticker = 'img';
 let currentFilter = 'normal';
 let adj = { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
 let smoothMode = false, vignetteMode = false;
-let faceDetections = [];
-let modelLoaded = false;
 
 const video = document.getElementById('video');
 const overlay = document.getElementById('overlay');
 const ctx = overlay.getContext('2d');
-const TAU = Math.PI * 2;
 
 // ── Filters ──
 const filters = [
@@ -609,128 +603,66 @@ function getTransform() {
   return { scale, ox, oy, dW, dH };
 }
 
-// ── Debug ──
-const dbg = document.getElementById('debugPanel');
-function log(msg) { dbg.innerHTML += msg + '<br>'; }
-
-// ── Face Detection ──
-// fetchを一切使わず tf.io.decodeWeights で直接メモリからロード
-async function loadModels() {
-  log('MODEL_DATA: ' + (typeof MODEL_DATA !== 'undefined' ? '✓' : '✗'));
-  log('STICKER_B64: ' + (typeof STICKER_B64 !== 'undefined' ? '✓' : '✗'));
-  log('faceapi: ' + (typeof faceapi !== 'undefined' ? '✓' : '✗'));
-  try {
-    const tfLib = window.tf || faceapi.tf;
-    log('tf: ' + (tfLib ? '✓' : '✗ 見つからない'));
-
-    const b64ToAB = s => {
-      const bin = atob(s), buf = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-      return buf.buffer;
-    };
-
-    log('TinyFaceDetector 読み込み中...');
-    const tfdSpecs  = JSON.parse(atob(MODEL_DATA.tfd_manifest))[0].weights;
-    const tfdMap    = tfLib.io.decodeWeights(b64ToAB(MODEL_DATA.tfd_shard), tfdSpecs);
-    await faceapi.nets.tinyFaceDetector.loadFromWeightMap(tfdMap);
-    log('TinyFaceDetector ✓');
-
-    log('Landmark68 読み込み中...');
-    const lmSpecs   = JSON.parse(atob(MODEL_DATA.lm_manifest))[0].weights;
-    const lmMap     = tfLib.io.decodeWeights(b64ToAB(MODEL_DATA.lm_shard), lmSpecs);
-    await faceapi.nets.faceLandmark68TinyNet.loadFromWeightMap(lmMap);
-    log('Landmark68 ✓');
-
-    modelLoaded = true;
-    document.getElementById('faceStatus').textContent = '';
-    detectLoop();
-  } catch(e) {
-    log('❌ ' + e.message);
-    document.getElementById('faceStatus').textContent = 'モデル読み込み失敗';
-  }
-  requestAnimationFrame(drawLoop);
-}
-
-// ── One Euro Filter（TikTok品質のスムージング）──
-// 遅い動き = 強くスムース（ぶれない）、速い動き = 素早く追従（遅延なし）
+// ── One Euro Filter ──
 class OneEuroFilter {
   constructor(minCutoff = 1.0, beta = 0.0, dCutoff = 1.0) {
-    this.minCutoff = minCutoff;
-    this.beta      = beta;
-    this.dCutoff   = dCutoff;
-    this.x         = null;
-    this.dx        = 0;
-    this.lastT     = null;
+    this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff;
+    this.x = null; this.dx = 0; this.lastT = null;
   }
-  _alpha(cutoff, dt) {
-    const r = 2 * Math.PI * cutoff * dt;
-    return r / (r + 1);
-  }
+  _alpha(cutoff, dt) { const r = 2 * Math.PI * cutoff * dt; return r / (r + 1); }
   filter(x, now = performance.now()) {
     const dt = this.lastT !== null ? (now - this.lastT) / 1000 : 1/60;
     this.lastT = now;
     if (this.x === null) { this.x = x; return x; }
-    // 速度を推定してカットオフを動的調整
     const rawDx = (x - this.x) / dt;
     this.dx += this._alpha(this.dCutoff, dt) * (rawDx - this.dx);
-    const cutoff = this.minCutoff + this.beta * Math.abs(this.dx);
-    this.x += this._alpha(cutoff, dt) * (x - this.x);
+    this.x  += this._alpha(this.minCutoff + this.beta * Math.abs(this.dx), dt) * (x - this.x);
     return this.x;
   }
 }
-
-// 角度用（±π折り返し対応）
 class OneEuroFilterAngle extends OneEuroFilter {
   filter(x, now) {
-    if (this.x !== null) {
-      let d = x - this.x;
-      while (d >  Math.PI) d -= 2 * Math.PI;
-      while (d < -Math.PI) d += 2 * Math.PI;
-      x = this.x + d;
-    }
+    if (this.x !== null) { let d = x - this.x; while (d > Math.PI) d -= 2*Math.PI; while (d < -Math.PI) d += 2*Math.PI; x = this.x + d; }
     return super.filter(x, now);
   }
 }
 
-// minCutoff: 静止時のなめらかさ（小さいほどスムース）
-// beta: 動きへの追従感度（大きいほど速い動きに追従）
-const oefX     = new OneEuroFilter(0.8, 0.06);
-const oefY     = new OneEuroFilter(0.8, 0.06);
+const oefX     = new OneEuroFilter(0.8, 0.07);
+const oefY     = new OneEuroFilter(0.8, 0.07);
 const oefW     = new OneEuroFilter(0.5, 0.03);
-const oefAngle = new OneEuroFilterAngle(0.8, 0.04);
+const oefRoll  = new OneEuroFilterAngle(0.8, 0.05);
+const oefYaw   = new OneEuroFilterAngle(1.0, 0.08); // yawは速い動きに追従
+const oefPitch = new OneEuroFilterAngle(1.0, 0.05);
 
-let hasFace = false;
-let lastPts = null; // 直近のランドマーク（顔ロスト時に最後の位置を保持）
+// ── MediaPipe FaceMesh ──
+let faceResults = null;
 
-function ptAvg(pts) {
-  return {
-    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
-    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
-  };
-}
+const faceMesh = new FaceMesh({
+  locateFile: file => `./mediapipe/${file}`
+});
 
-// ── Face Detection（チェーン実行で最速検出）──
-let detecting = false;
+faceMesh.setOptions({
+  maxNumFaces: 1,
+  refineLandmarks: false,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5,
+});
+
+faceMesh.onResults(results => {
+  faceResults = results;
+  const found = results.multiFaceLandmarks?.length > 0;
+  document.getElementById('faceStatus').textContent = found ? '' : '顔が見つかりません';
+});
+
+// ビデオフレームをMediaPipeに送り続ける
+let sending = false;
 async function detectLoop() {
-  if (!modelLoaded || detecting) return;
-  detecting = true;
-  try {
-    const det = await faceapi
-      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.45 }))
-      .withFaceLandmarks(true);
-    faceDetections = det || [];
-    hasFace = faceDetections.length > 0;
-    if (hasFace) lastPts = faceDetections[0].landmarks.positions;
-    document.getElementById('faceStatus').textContent = hasFace ? '' : '顔が見つかりません';
-  } catch(e) { }
-  detecting = false;
-  // 次の検出を即座にスケジュール（setIntervalより正確）
-  setTimeout(detectLoop, 0);
-}
-
-function drawLoop() {
-  drawOverlay();
-  requestAnimationFrame(drawLoop);
+  if (!sending && video.readyState >= 2) {
+    sending = true;
+    await faceMesh.send({ image: video });
+    sending = false;
+  }
+  requestAnimationFrame(detectLoop);
 }
 
 // ── Sticker Image ──
@@ -739,6 +671,11 @@ stickerImg.onload = () => { document.getElementById('stickerThumb').src = sticke
 stickerImg.src = 'data:image/png;base64,' + STICKER_B64;
 
 // ── Drawing ──
+function drawLoop() {
+  drawOverlay();
+  requestAnimationFrame(drawLoop);
+}
+
 function drawOverlay() {
   const W = overlay.width, H = overlay.height;
   ctx.clearRect(0, 0, W, H);
@@ -754,47 +691,69 @@ function drawVignette(W, H) {
 
 function drawStickerImg() {
   if (!stickerImg.complete || stickerImg.naturalWidth === 0) return;
-  const pts = lastPts;
-  if (!pts) return;
+  const lms = faceResults?.multiFaceLandmarks?.[0];
+  if (!lms) return;
 
-  const t = getTransform();
+  const t   = getTransform();
   const now = performance.now();
+  const vW  = video.videoWidth, vH = video.videoHeight;
 
-  // ビデオ座標 → 画面座標（object-fit:cover + mirror）
-  const mp = p => ({
-    x: t.dW - (p.x * t.scale + t.ox),
-    y:         p.y * t.scale + t.oy,
+  // MediaPipe正規化座標(0-1) → 画面座標(mirror込み)
+  const mp = lm => ({
+    x: t.dW - (lm.x * vW * t.scale + t.ox),
+    y:          lm.y * vH * t.scale + t.oy,
+    z:          lm.z * vW * t.scale,  // zもピクセル換算
   });
 
-  // 目6点ずつ → 中心
-  const le = ptAvg(pts.slice(36, 42).map(mp));
-  const re = ptAvg(pts.slice(42, 48).map(mp));
+  // 主要ランドマーク（MediaPipe 468点）
+  // 右目(カメラ) = ミラーで左に見える: 33,133  左目(カメラ) = ミラーで右に見える: 362,263
+  const re = mp(lms[33]);   // ミラー左目・内側
+  const le = mp(lms[263]);  // ミラー右目・内側
+  const noseTip    = mp(lms[4]);   // 鼻先
+  const forehead   = mp(lms[10]);  // 額
+  const chin       = mp(lms[152]); // 顎
 
-  // 鼻先（ランドマーク30番）
-  const noseTip = mp(pts[30]);
+  // ── Roll（傾き）: 目を結ぶ線の角度 ──
+  const rawRoll = Math.atan2(le.y - re.y, le.x - re.x);
 
+  // ── Yaw（左右向き）: z座標の非対称性 ──
+  // 顔が右を向くと左目zが増加（遠ざかる）、右目zが減少（近づく）
+  const iod    = Math.hypot(le.x - re.x, le.y - re.y);
+  const zDiff  = le.z - re.z; // 正 = ミラーで右向き
+  const rawYaw = Math.atan2(zDiff, iod * 0.6);
+
+  // ── Pitch（上下向き）: 鼻先のz vs 目ライン ──
+  const eyeMidZ   = (le.z + re.z) / 2;
+  const faceH     = Math.hypot(chin.x - forehead.x, chin.y - forehead.y);
+  const rawPitch  = Math.atan2(noseTip.z - eyeMidZ, faceH * 0.3);
+
+  // ── 中心位置: 鼻先 ──
   const rawX = noseTip.x;
   const rawY = noseTip.y;
 
-  // 瞳孔間距離 → スタンプ幅
-  const iod   = Math.hypot(re.x - le.x, re.y - le.y);
-  const rawW  = iod * 3.8;
+  // ── スタンプ幅: 瞳孔間距離ベース ──
+  const rawW = iod * 3.8;
 
-  // 両目ライン角度（ミラー済み座標で計算）
-  const rawAngle = Math.atan2(le.y - re.y, le.x - re.x);
-
-  // One Euro Filter で平滑化
-  const cx = oefX.filter(rawX, now);
-  const cy = oefY.filter(rawY, now);
-  const cw = oefW.filter(rawW, now);
-  const ca = oefAngle.filter(rawAngle, now);
+  // One Euro Filter で全パラメータを平滑化
+  const cx    = oefX.filter(rawX, now);
+  const cy    = oefY.filter(rawY, now);
+  const cw    = oefW.filter(rawW, now);
+  const roll  = oefRoll.filter(rawRoll, now);
+  const yaw   = oefYaw.filter(rawYaw, now);
+  const pitch = oefPitch.filter(rawPitch, now);
 
   const sw = cw;
   const sh = sw * (stickerImg.naturalHeight / stickerImg.naturalWidth);
 
+  // ── 立体感のある描画 ──
+  // yawとpitchでスタンプを圧縮 → 顔が向いた方向に立体的にフォロー
+  const perspX = Math.cos(yaw);   // 横向き時に幅を圧縮
+  const perspY = Math.cos(pitch); // 縦向き時に高さを圧縮
+
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(ca);
+  ctx.rotate(roll);
+  ctx.scale(perspX, perspY);
   ctx.globalCompositeOperation = 'multiply';
   ctx.drawImage(stickerImg, -sw / 2, -sh / 2, sw, sh);
   ctx.restore();
@@ -838,7 +797,10 @@ function showToast(msg) {
 
 // ── Init ──
 buildFilterRow();
-startCamera().then(()=>loadModels());
+startCamera().then(() => {
+  detectLoop();
+  requestAnimationFrame(drawLoop);
+});
 </script>
 </body>
 </html>
