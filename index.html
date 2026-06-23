@@ -426,14 +426,10 @@ input[type=range]::-webkit-slider-thumb {
   <div class="tab-content active" id="tab-sticker">
     <div id="stickerRow">
       <div class="sticker-pill" onclick="setSticker('none',this)"><span class="si">🚫</span><span class="sl">なし</span></div>
-      <div class="sticker-pill active" onclick="setSticker('cat',this)"><span class="si">🐱</span><span class="sl">猫耳</span></div>
-      <div class="sticker-pill" onclick="setSticker('ribbon',this)"><span class="si">🎀</span><span class="sl">リボン</span></div>
-      <div class="sticker-pill" onclick="setSticker('catribbon',this)"><span class="si">🎀</span><span class="sl">猫+リボン</span></div>
-      <div class="sticker-pill" onclick="setSticker('crown',this)"><span class="si">👑</span><span class="sl">王冠</span></div>
-      <div class="sticker-pill" onclick="setSticker('flowers',this)"><span class="si">🌸</span><span class="sl">花冠</span></div>
-      <div class="sticker-pill" onclick="setSticker('glasses',this)"><span class="si">🕶</span><span class="sl">サングラス</span></div>
-      <div class="sticker-pill" onclick="setSticker('sparkle',this)"><span class="si">✨</span><span class="sl">キラキラ</span></div>
-      <div class="sticker-pill" onclick="setSticker('hearts',this)"><span class="si">💕</span><span class="sl">ハート</span></div>
+      <div class="sticker-pill active" onclick="setSticker('img',this)">
+        <img id="stickerThumb" style="width:28px;height:28px;object-fit:contain;border-radius:6px;" alt="お試し">
+        <span class="sl">お試し</span>
+      </div>
     </div>
   </div>
 
@@ -497,6 +493,7 @@ input[type=range]::-webkit-slider-thumb {
 </div>
 
 <script src="model_data.js"></script>
+<script src="sticker_data.js"></script>
 <script src="face-api.min.js"></script>
 <script>
 // face-api/tfjsの内部fetchをオーバーライド（file://でも動作）
@@ -532,7 +529,7 @@ input[type=range]::-webkit-slider-thumb {
 })();
 
 // ── State ──
-let currentSticker = 'cat';
+let currentSticker = 'img';
 let currentFilter = 'normal';
 let adj = { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
 let smoothMode = false, vignetteMode = false;
@@ -672,14 +669,20 @@ function drawLoop() {
   requestAnimationFrame(drawLoop);
 }
 
+// ── Sticker Image ──
+const stickerImg = new Image();
+stickerImg.onload = () => {
+  document.getElementById('stickerThumb').src = stickerImg.src;
+};
+stickerImg.src = 'data:image/png;base64,' + STICKER_B64;
+
 // ── Drawing ──
 function drawOverlay() {
   const W = overlay.width, H = overlay.height;
   ctx.clearRect(0, 0, W, H);
   if (vignetteMode) drawVignette(W, H);
   const t = getTransform();
-  if (currentSticker === 'sparkle') drawSparklesGlobal(W, H);
-  faceDetections.forEach(det => drawSticker(det.detection.box, det.landmarks, t));
+  faceDetections.forEach(det => drawSticker(det.detection.box, t));
 }
 
 function drawVignette(W, H) {
@@ -688,130 +691,27 @@ function drawVignette(W, H) {
   ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 }
 
-function drawSticker(box, lm, t) {
-  // ビデオ座標 → 画面座標に変換
-  const sx  = box.x * t.scale + t.ox;
-  const sy  = box.y * t.scale + t.oy;
-  const fw  = box.width  * t.scale;
-  const fh  = box.height * t.scale;
-  // ビデオはCSS scaleX(-1)で映る → x座標を水平反転
-  const cx  = t.dW - (sx + fw / 2);
-  const pts = lm?.positions;
+function drawSticker(box, t) {
+  if (currentSticker !== 'img') return;
+  if (!stickerImg.complete || stickerImg.naturalWidth === 0) return;
 
-  switch(currentSticker) {
-    case 'cat':      drawCatEars(cx, sy, fw, fh); break;
-    case 'ribbon':   drawRibbon(cx, sy, fw, fh); break;
-    case 'catribbon':drawCatEars(cx, sy, fw, fh); drawRibbon(cx, sy, fw, fh); break;
-    case 'crown':    drawCrown(cx, sy, fw, fh); break;
-    case 'flowers':  drawFlowerCrown(cx, sy, fw, fh); break;
-    case 'glasses':  if(pts) drawGlasses(pts, t); break;
-    case 'sparkle':  drawSparklesAround(cx, sy, fw, fh); break;
-    case 'hearts':   drawHearts(cx, sy, fw, fh); break;
-  }
-}
+  // ビデオ座標 → 画面座標（object-fit:cover考慮）
+  const sx = box.x * t.scale + t.ox;
+  const sy = box.y * t.scale + t.oy;
+  const fw = box.width  * t.scale;
+  const fh = box.height * t.scale;
+  // CSSのscaleX(-1)ミラー → x軸反転
+  const cx = t.dW - (sx + fw / 2);
 
-function drawCatEars(cx,fy,fw,fh) {
-  const eW=fw*0.28, eH=fh*0.38, eY=fy-eH*0.7, gap=fw*0.2;
-  [[cx-gap-eW/2,eY],[cx+gap+eW/2-eW,eY]].forEach(([ex,ey])=>{
-    ctx.beginPath(); ctx.moveTo(ex,ey+eH); ctx.lineTo(ex+eW/2,ey); ctx.lineTo(ex+eW,ey+eH); ctx.closePath();
-    ctx.fillStyle='#ff6eb4'; ctx.fill();
-    const p=0.25;
-    ctx.beginPath(); ctx.moveTo(ex+eW*p,ey+eH*(1-p)); ctx.lineTo(ex+eW/2,ey+eH*p*1.5); ctx.lineTo(ex+eW*(1-p),ey+eH*(1-p)); ctx.closePath();
-    ctx.fillStyle='#ffc2e0'; ctx.fill();
-  });
-}
+  // 顔の幅に合わせてスタンプサイズを決定、顔中央に配置
+  const sw = fw * 1.2;
+  const sh = sw * (stickerImg.naturalHeight / stickerImg.naturalWidth);
 
-function drawRibbon(cx,fy,fw,fh) {
-  const rx=cx, ry=fy-fh*0.08, rw=fw*0.32, rh=fw*0.18;
-  [[-1],[1]].forEach(([d])=>{
-    ctx.beginPath(); ctx.moveTo(rx,ry);
-    ctx.bezierCurveTo(rx+d*rw,ry-rh,rx+d*rw,ry+rh,rx,ry);
-    ctx.fillStyle='#ff6eb4'; ctx.fill();
-    ctx.strokeStyle='#ff3d9a'; ctx.lineWidth=1.5; ctx.stroke();
-  });
-  ctx.beginPath(); ctx.arc(rx,ry,fw*0.05,0,TAU); ctx.fillStyle='#ff3d9a'; ctx.fill();
-}
-
-function drawCrown(cx,fy,fw,fh) {
-  const w=fw*0.9, h=fh*0.3, bx=cx-w/2, by=fy-h*0.3;
-  ctx.fillStyle='#FFD700'; ctx.strokeStyle='#FFA500'; ctx.lineWidth=2;
-  ctx.beginPath();
-  ctx.moveTo(bx,by+h); ctx.lineTo(bx,by+h*0.4); ctx.lineTo(bx+w*0.2,by+h*0.7);
-  ctx.lineTo(bx+w*0.35,by); ctx.lineTo(bx+w*0.5,by+h*0.6);
-  ctx.lineTo(bx+w*0.65,by); ctx.lineTo(bx+w*0.8,by+h*0.7);
-  ctx.lineTo(bx+w,by+h*0.4); ctx.lineTo(bx+w,by+h); ctx.closePath();
-  ctx.fill(); ctx.stroke();
-  [[bx+w*0.35,by+h*0.1,'#ff6eb4'],[bx+w*0.5,by+h*0.05,'#a855f7'],[bx+w*0.65,by+h*0.1,'#38bdf8']].forEach(([gx,gy,c])=>{
-    ctx.beginPath(); ctx.arc(gx,gy,w*0.04,0,TAU); ctx.fillStyle=c; ctx.fill();
-  });
-}
-
-function drawFlowerCrown(cx,fy,fw,fh) {
-  const colors=['#ff6eb4','#ffd700','#ff8c00','#a855f7','#38bdf8','#ff6eb4','#ffd700'];
-  for(let i=0;i<7;i++){
-    const a=Math.PI+(Math.PI/6)*i;
-    const fx=cx+Math.cos(a)*fw*0.52, fy2=fy+fh*0.05+Math.sin(a)*fw*0.24;
-    drawFlower(fx,fy2,fw*0.09,colors[i]);
-  }
-}
-
-function drawFlower(x,y,r,col) {
-  for(let i=0;i<6;i++){
-    const a=(TAU/6)*i;
-    ctx.beginPath(); ctx.ellipse(x+Math.cos(a)*r*0.7,y+Math.sin(a)*r*0.7,r*0.5,r*0.3,a,0,TAU);
-    ctx.fillStyle=col; ctx.fill();
-  }
-  ctx.beginPath(); ctx.arc(x,y,r*0.35,0,TAU); ctx.fillStyle='#fff176'; ctx.fill();
-}
-
-function drawGlasses(pts, t) {
-  // ビデオ座標 → 画面座標（ミラー込み）に変換
-  const mp = p => ({ x: t.dW - (p.x * t.scale + t.ox), y: p.y * t.scale + t.oy });
-  const mpts = pts.map(mp);
-  const le = mpts.slice(36,42), re = mpts.slice(42,48);
-  const lc = avg(le), rc = avg(re);
-  const eW = dist(mpts[36], mpts[39]) * 1.4, eH = eW * 0.6;
-  ctx.strokeStyle='#222'; ctx.lineWidth=3; ctx.fillStyle='rgba(0,200,255,0.25)';
-  ctx.beginPath(); ctx.ellipse(lc.x,lc.y,eW/2,eH/2,0,0,TAU); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(rc.x,rc.y,eW/2,eH/2,0,0,TAU); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(lc.x-eW/2,lc.y); ctx.lineTo(rc.x+eW/2,rc.y);
-  ctx.lineWidth=2; ctx.stroke();
-}
-
-function avg(pts){return{x:pts.reduce((s,p)=>s+p.x,0)/pts.length,y:pts.reduce((s,p)=>s+p.y,0)/pts.length};}
-function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
-
-function drawHearts(cx,fy,fw,fh) {
-  const t=Date.now()/600;
-  [[cx-fw*0.7,fy-fh*0.2],[cx+fw*0.7,fy-fh*0.2],[cx-fw*0.5,fy+fh*0.6],[cx+fw*0.5,fy+fh*0.6],[cx,fy-fh*0.3]]
-  .forEach(([hx,hy],i)=>{
-    ctx.font=`${fw*0.12}px serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(['💕','💗','💖','💓','💝'][i],hx,hy+Math.sin(t+i)*5);
-  });
-}
-
-const sparkles=Array.from({length:20},()=>({x:Math.random(),y:Math.random(),s:Math.random(),t:Math.random()*TAU}));
-
-function drawSparklesGlobal(W,H) {
-  const t=Date.now()/800;
-  sparkles.forEach((sp,i)=>{
-    const a=0.4+0.6*Math.abs(Math.sin(t+sp.t));
-    drawStar(sp.x*W,sp.y*H,(8+sp.s*10)*(0.7+0.3*Math.sin(t*1.3+i)),`rgba(255,215,0,${a})`);
-  });
-}
-
-function drawSparklesAround(cx,fy,fw,fh) {
-  const t=Date.now()/700;
-  for(let i=0;i<8;i++){
-    const a=(TAU/8)*i+t*0.5, r=fw*0.7+Math.sin(t+i)*fw*0.1;
-    drawStar(cx+Math.cos(a)*r,fy+fh/2+Math.sin(a)*r*0.5,fw*0.06,`rgba(255,215,0,${0.5+0.5*Math.sin(t*2+i)})`);
-  }
-}
-
-function drawStar(x,y,s,col) {
-  ctx.save(); ctx.translate(x,y); ctx.fillStyle=col; ctx.beginPath();
-  for(let i=0;i<4;i++){const a=(TAU/4)*i;ctx.lineTo(Math.cos(a)*s,Math.sin(a)*s);ctx.lineTo(Math.cos(a+TAU/8)*s*0.4,Math.sin(a+TAU/8)*s*0.4);}
-  ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.save();
+  // 白背景を透過させる（multiply blend）
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.drawImage(stickerImg, cx - sw/2, sy + fh*0.1, sw, sh);
+  ctx.restore();
 }
 
 // ── Capture ──
