@@ -500,25 +500,36 @@ input[type=range]::-webkit-slider-thumb {
 <script src="model_data.js"></script>
 <script src="face-api.min.js"></script>
 <script>
-// Patch fetch so face-api can load models from embedded base64 data (works offline / file://)
+// face-api/tfjsの内部fetchをオーバーライド（file://でも動作）
 (function() {
-  const origFetch = window.fetch;
   const b64ToArrayBuffer = s => {
     const bin = atob(s), buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
     return buf.buffer;
   };
   const MAP = {
-    'tiny_face_detector_model-weights_manifest.json': () => ({ ok: true, json: () => Promise.resolve(JSON.parse(atob(MODEL_DATA.tfd_manifest))) }),
-    'tiny_face_detector_model-shard1':               () => ({ ok: true, arrayBuffer: () => Promise.resolve(b64ToArrayBuffer(MODEL_DATA.tfd_shard)) }),
-    'face_landmark_68_tiny_model-weights_manifest.json': () => ({ ok: true, json: () => Promise.resolve(JSON.parse(atob(MODEL_DATA.lm_manifest))) }),
-    'face_landmark_68_tiny_model-shard1':            () => ({ ok: true, arrayBuffer: () => Promise.resolve(b64ToArrayBuffer(MODEL_DATA.lm_shard)) }),
+    'tiny_face_detector_model-weights_manifest.json':    { type: 'json',   data: () => JSON.parse(atob(MODEL_DATA.tfd_manifest)) },
+    'tiny_face_detector_model-shard1':                   { type: 'binary', data: () => b64ToArrayBuffer(MODEL_DATA.tfd_shard) },
+    'face_landmark_68_tiny_model-weights_manifest.json': { type: 'json',   data: () => JSON.parse(atob(MODEL_DATA.lm_manifest)) },
+    'face_landmark_68_tiny_model-shard1':                { type: 'binary', data: () => b64ToArrayBuffer(MODEL_DATA.lm_shard) },
   };
-  window.fetch = (url, opts) => {
-    const key = String(url).split('/').pop();
-    if (MAP[key]) return Promise.resolve(MAP[key]());
-    return origFetch(url, opts);
+  const customFetch = (url, opts) => {
+    const key = String(url).split('/').pop().split('?')[0];
+    const entry = MAP[key];
+    if (entry) {
+      const resp = {
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(entry.data()),
+        arrayBuffer: () => Promise.resolve(entry.data()),
+        text: () => Promise.resolve(JSON.stringify(entry.data())),
+      };
+      return Promise.resolve(resp);
+    }
+    return fetch(url, opts);
   };
+  // tfjs内部のfetchを公式APIでパッチ
+  faceapi.env.monkeyPatch({ fetch: customFetch });
 })();
 
 // ── State ──
@@ -622,8 +633,8 @@ function resizeOverlay() {
 // ── Face Detection ──
 async function loadModels() {
   try {
-    await faceapi.nets.tinyFaceDetector.loadFromUri('/');
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/');
+    await faceapi.nets.tinyFaceDetector.loadFromUri('./weights');
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('./weights');
     modelLoaded = true;
     document.getElementById('faceStatus').textContent = '';
     setInterval(detectFaces, 80);
