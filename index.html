@@ -643,7 +643,7 @@ async function loadModels() {
 
     modelLoaded = true;
     document.getElementById('faceStatus').textContent = '';
-    setInterval(detectFaces, 80);
+    detectLoop();
   } catch(e) {
     log('❌ ' + e.message);
     document.getElementById('faceStatus').textContent = 'モデル読み込み失敗';
@@ -651,15 +651,81 @@ async function loadModels() {
   requestAnimationFrame(drawLoop);
 }
 
-async function detectFaces() {
-  if (!modelLoaded) return;
+// ── One Euro Filter（TikTok品質のスムージング）──
+// 遅い動き = 強くスムース（ぶれない）、速い動き = 素早く追従（遅延なし）
+class OneEuroFilter {
+  constructor(minCutoff = 1.0, beta = 0.0, dCutoff = 1.0) {
+    this.minCutoff = minCutoff;
+    this.beta      = beta;
+    this.dCutoff   = dCutoff;
+    this.x         = null;
+    this.dx        = 0;
+    this.lastT     = null;
+  }
+  _alpha(cutoff, dt) {
+    const r = 2 * Math.PI * cutoff * dt;
+    return r / (r + 1);
+  }
+  filter(x, now = performance.now()) {
+    const dt = this.lastT !== null ? (now - this.lastT) / 1000 : 1/60;
+    this.lastT = now;
+    if (this.x === null) { this.x = x; return x; }
+    // 速度を推定してカットオフを動的調整
+    const rawDx = (x - this.x) / dt;
+    this.dx += this._alpha(this.dCutoff, dt) * (rawDx - this.dx);
+    const cutoff = this.minCutoff + this.beta * Math.abs(this.dx);
+    this.x += this._alpha(cutoff, dt) * (x - this.x);
+    return this.x;
+  }
+}
+
+// 角度用（±π折り返し対応）
+class OneEuroFilterAngle extends OneEuroFilter {
+  filter(x, now) {
+    if (this.x !== null) {
+      let d = x - this.x;
+      while (d >  Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      x = this.x + d;
+    }
+    return super.filter(x, now);
+  }
+}
+
+// minCutoff: 静止時のなめらかさ（小さいほどスムース）
+// beta: 動きへの追従感度（大きいほど速い動きに追従）
+const oefX     = new OneEuroFilter(0.8, 0.06);
+const oefY     = new OneEuroFilter(0.8, 0.06);
+const oefW     = new OneEuroFilter(0.5, 0.03);
+const oefAngle = new OneEuroFilterAngle(0.8, 0.04);
+
+let hasFace = false;
+let lastPts = null; // 直近のランドマーク（顔ロスト時に最後の位置を保持）
+
+function ptAvg(pts) {
+  return {
+    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+  };
+}
+
+// ── Face Detection（チェーン実行で最速検出）──
+let detecting = false;
+async function detectLoop() {
+  if (!modelLoaded || detecting) return;
+  detecting = true;
   try {
     const det = await faceapi
-      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.45 }))
       .withFaceLandmarks(true);
     faceDetections = det || [];
-    document.getElementById('faceStatus').textContent = faceDetections.length ? `顔: ${faceDetections.length}件検出` : '顔が見つかりません';
-  } catch(e) { faceDetections = []; log('detect err: '+e.message); }
+    hasFace = faceDetections.length > 0;
+    if (hasFace) lastPts = faceDetections[0].landmarks.positions;
+    document.getElementById('faceStatus').textContent = hasFace ? '' : '顔が見つかりません';
+  } catch(e) { }
+  detecting = false;
+  // 次の検出を即座にスケジュール（setIntervalより正確）
+  setTimeout(detectLoop, 0);
 }
 
 function drawLoop() {
@@ -669,80 +735,15 @@ function drawLoop() {
 
 // ── Sticker Image ──
 const stickerImg = new Image();
-stickerImg.onload = () => {
-  document.getElementById('stickerThumb').src = stickerImg.src;
-};
+stickerImg.onload = () => { document.getElementById('stickerThumb').src = stickerImg.src; };
 stickerImg.src = 'data:image/png;base64,' + STICKER_B64;
-
-// ── Smooth State（EMA補間で毎フレーム滑らかに動かす）──
-const smooth = { x: null, y: null, w: null, angle: 0 };
-const ALPHA = 0.35; // 0=最大スムース 1=即時追従
-
-function lerpAngle(from, to, t) {
-  let d = to - from;
-  while (d >  Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  return from + d * t;
-}
-
-function avg(pts) {
-  return {
-    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
-    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
-  };
-}
-
-// 最新の検出結果からEMA平滑化済み状態を更新（毎フレーム呼ぶ）
-function updateSmooth(dets, t) {
-  if (!dets || dets.length === 0) return;
-
-  const det  = dets[0];
-  const pts  = det.landmarks?.positions;
-  if (!pts) return;
-
-  // ビデオ座標 → 画面座標（mirror込み）
-  const mp = p => ({
-    x: t.dW - (p.x * t.scale + t.ox),
-    y:         p.y * t.scale + t.oy,
-  });
-
-  const le = avg(pts.slice(36, 42).map(mp)); // 左目（画面では右側）
-  const re = avg(pts.slice(42, 48).map(mp)); // 右目（画面では左側）
-
-  // 両目の中点 = スタンプ中心
-  const tx = (le.x + re.x) / 2;
-  const ty = (le.y + re.y) / 2;
-
-  // 瞳孔間距離 × 係数でスタンプ幅を決定
-  const iod  = Math.hypot(re.x - le.x, re.y - le.y);
-  const tw   = iod * 3.5;
-
-  // ミラー画面での角度：左目が右、右目が左なので le→re の角度を使う
-  const tAngle = Math.atan2(le.y - re.y, le.x - re.x);
-
-  if (smooth.x === null) {
-    // 初回は即座にセット
-    smooth.x = tx; smooth.y = ty; smooth.w = tw; smooth.angle = tAngle;
-  } else {
-    smooth.x     += (tx - smooth.x)   * ALPHA;
-    smooth.y     += (ty - smooth.y)   * ALPHA;
-    smooth.w     += (tw - smooth.w)   * ALPHA;
-    smooth.angle  = lerpAngle(smooth.angle, tAngle, ALPHA);
-  }
-}
 
 // ── Drawing ──
 function drawOverlay() {
   const W = overlay.width, H = overlay.height;
   ctx.clearRect(0, 0, W, H);
   if (vignetteMode) drawVignette(W, H);
-
-  const t = getTransform();
-  updateSmooth(faceDetections, t);
-
-  if (currentSticker === 'img' && smooth.x !== null) {
-    drawStickerImg();
-  }
+  if (currentSticker === 'img') drawStickerImg();
 }
 
 function drawVignette(W, H) {
@@ -753,13 +754,48 @@ function drawVignette(W, H) {
 
 function drawStickerImg() {
   if (!stickerImg.complete || stickerImg.naturalWidth === 0) return;
+  const pts = lastPts;
+  if (!pts) return;
 
-  const sw = smooth.w;
+  const t = getTransform();
+  const now = performance.now();
+
+  // ビデオ座標 → 画面座標（object-fit:cover + mirror）
+  const mp = p => ({
+    x: t.dW - (p.x * t.scale + t.ox),
+    y:         p.y * t.scale + t.oy,
+  });
+
+  // 目6点ずつ → 中心
+  const le = ptAvg(pts.slice(36, 42).map(mp));
+  const re = ptAvg(pts.slice(42, 48).map(mp));
+
+  // 鼻筋中心（安定したアンカー）
+  const noseBridge = ptAvg(pts.slice(27, 31).map(mp));
+
+  // スタンプ中心 = 目の中点と鼻筋を加重平均（目だけより安定）
+  const rawX = le.x * 0.4 + re.x * 0.4 + noseBridge.x * 0.2;
+  const rawY = le.y * 0.4 + re.y * 0.4 + noseBridge.y * 0.2;
+
+  // 瞳孔間距離 → スタンプ幅
+  const iod   = Math.hypot(re.x - le.x, re.y - le.y);
+  const rawW  = iod * 3.8;
+
+  // 両目ライン角度（ミラー済み座標で計算）
+  const rawAngle = Math.atan2(le.y - re.y, le.x - re.x);
+
+  // One Euro Filter で平滑化
+  const cx = oefX.filter(rawX, now);
+  const cy = oefY.filter(rawY, now);
+  const cw = oefW.filter(rawW, now);
+  const ca = oefAngle.filter(rawAngle, now);
+
+  const sw = cw;
   const sh = sw * (stickerImg.naturalHeight / stickerImg.naturalWidth);
 
   ctx.save();
-  ctx.translate(smooth.x, smooth.y);
-  ctx.rotate(smooth.angle);
+  ctx.translate(cx, cy);
+  ctx.rotate(ca);
   ctx.globalCompositeOperation = 'multiply';
   ctx.drawImage(stickerImg, -sw / 2, -sh / 2, sw, sh);
   ctx.restore();
